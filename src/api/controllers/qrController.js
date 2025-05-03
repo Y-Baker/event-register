@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 
 const { generateQRCode } = require('../../utils/qrUtils');
-const { sendEmail } = require('../../utils/emailUtils');
+const { sendEmail } = require('../../services/emailService');
 const Event = require('../../models/Event');
 const Activity = require('../../models/Activity');
 const Participant  = require('../../models/Participant');

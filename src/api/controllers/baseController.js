@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { checkHealth } = require('../../services/keydbService');
 
 const getAllRoutes = (req, res) => {
   res.status(200).json({
@@ -7,6 +8,7 @@ const getAllRoutes = (req, res) => {
       { method: 'GET', path: '/api/v1/', description: 'Welcome to the API' },
       { method: 'GET', path: '/api/v1/health', description: 'Health check for the API' },
       { method: 'GET', path: '/api/v1/health/db', description: 'Health check for the MongoDB connection' },
+      { method: 'GET', path: '/api/v1/health/redis', description: 'Health check for the Redis connection'},
 
       { method: 'POST', path: '/api/v1/events', description: 'Create a new event' },
       { method: 'GET', path: '/api/v1/events', description: 'Get all events' },
@@ -24,6 +26,10 @@ const getAllRoutes = (req, res) => {
 
       { method: 'GET', path: '/api/v1/events/:id/qr/send', description: 'Send QR codes to participants via email' },
       { method: 'POST', path: '/api/v1/events/:id/qr/register-activity', description: 'Register a scanned activity for a participant' },
+
+      { method: 'POST', path: '/api/v1/admin/keys/:KeyName/issue', description: 'Issue a new key' },
+      { method: 'GET', path: '/api/v1/admin/keys', description: 'Get all keys' },
+      { method: 'GET', path: '/api/v1/admin/keys/:KeyName', description: 'Get key by name' },
     ],
   });
 }
@@ -52,8 +58,27 @@ const MongoDBHealthCheck = async (req, res) => {
   }
 }
 
+const RedisHealthCheck = async (req, res) => {
+  const status = await checkHealth();
+
+  if (status.healthy) {
+    return res.status(200).json({
+      message: `Redis is healthy. Ping response: ${status.ping}`,
+      timestamp: new Date(),
+    });
+  }
+
+  return res.status(500).json({
+    message: 'Redis is not healthy.',
+    error: status.error,
+    timestamp: new Date(),
+  });
+};
+
+
 module.exports = {
   getAllRoutes,
   healthCheck,
   MongoDBHealthCheck,
+  RedisHealthCheck
 };

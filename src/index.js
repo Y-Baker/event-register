@@ -9,6 +9,9 @@ const path = require('path');
 
 const eventRoutes = require('./api/routes/eventRoutes');
 const baseRoutes = require('./api/routes/baseRoutes');
+const adminRoutes = require('./api/routes/adminRoutes');
+const { authMiddleware } = require('./middlewares/auth');
+const { openConnection } = require("./services/keydbService");
 dotenv.config();
 
 
@@ -20,20 +23,24 @@ const MONGO_URI = process.env.MONGO_URI;
 mongoose
   .connect(MONGO_URI)
   .then(() => {
-    console.log("MongoDB connected");
+    console.log("✅ MongoDB connected");
   })
   .catch((err) => {
     console.error("MongoDB connection error:", err);
   });
 
+// Connect to Redis
+openConnection();
+
 // Middleware
 app.use(express.json());
 app.use(cors());
+app.use(authMiddleware);
 
 // Routes
 app.use('/api/v1/events', eventRoutes);
 app.use('/api/v1', baseRoutes);
-
+app.use('/api/v1/admin', adminRoutes);
 app.use((err, req, res, next) => {
   console.error(err.stack);
 

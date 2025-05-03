@@ -1,8 +1,31 @@
-## End Points
+# Event Registration Service
+
+## Resposiablities
+- Create and manage events.
+- Create and manage activities for events.
+- Create and manage participants for events.
+- Upload participants from a CSV file.
+- Register participants for activities using QR codes.
+- Generate QR codes for events.
+- Send QR codes to participants via email.
+- Scan QR codes to register participants for activities.
+
+
+## Roles
+- Organizer: Can create and manage events, activities, and participants.
+- Scanner: Can scan QR codes to register participants for activities.
+
+## Auth
+- Set the `x-api-key` header to the API key.
+- The API key is required for the endpoint that required a role.
+
+
+## Quick Start
 
 - `/api/v1/` - Get all the available endpoints.
 - `/api/v1/health` - Check the health of the API.
 - `/api/v1/health/db` - Check the health of the database.
+- `/api/v1/health/redis` - Check the health of the keydb.
 
 ### Create a new Event
 
@@ -144,8 +167,9 @@
 
   - `POST /api/v1/events/:eventId/qr/register-activity?ticketId=[value]&activityId=[value]` - Register an activity for a participant.
   - Response:
+
   ```json
-  {
-    
-  }
+    Activity scanned successfully
+  ```
+
   
