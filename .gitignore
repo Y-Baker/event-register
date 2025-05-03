@@ -1,0 +1,8 @@
+node_modules/
+package-lock.json
+.vscode/
+.env
+sendgrid.env
+__pycache__/
+*.csv
+
