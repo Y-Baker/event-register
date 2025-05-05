@@ -52,6 +52,7 @@ const sendQRToParticipants = async (req, res) => {
     }
 
     let successCount = 0;
+    let skippedCount = 0;
     let failCount = 0;
     const errors = [];
 
@@ -59,6 +60,11 @@ const sendQRToParticipants = async (req, res) => {
       try {
         const qrCodePath = path.join(__dirname, `../../../uploads/${participant._id}.png`);
         
+        if (participant.qrSent) {
+          skippedCount++;
+          continue;
+        }
+
         if (!fs.existsSync(qrCodePath)) {
           const qrData = `${participant._id}`;
           await generateQRCode(qrData, qrCodePath);
@@ -67,20 +73,18 @@ const sendQRToParticipants = async (req, res) => {
 
         const emailText = `Hello ${participant.name},\n\n` +  `Attached is your QR code for the event: ${event.name}. Please bring it with you to scan for check-in.` || mailBody + `\n\nBest regards,\nIEEE Menoufia Student Branch`;
 
-        if (!participant.qrSent) {
-          await sendEmail(
-            participant.email,
-            'Your Event QR Code',
-            emailText,
-            [{ filename: `${participant._id}.png`, path: qrCodePath }]
-          ).then(() => {
-            participant.qrSent = true;
-          }).catch((err) => {
-            participant.qrSent = false;
-            throw new Error(`Failed to send email: ${err.message}`);
-          });
-          await participant.save();
-        }
+        await sendEmail(
+          participant.email,
+          'Your Event QR Code',
+          emailText,
+          [{ filename: `${participant._id}.png`, path: qrCodePath }]
+        ).then(() => {
+          participant.qrSent = true;
+        }).catch((err) => {
+          participant.qrSent = false;
+          throw new Error(`Failed to send email: ${err.message}`);
+        });
+        await participant.save();
         fs.unlinkSync(qrCodePath);
         successCount++;
       } catch (err) {
@@ -93,6 +97,7 @@ const sendQRToParticipants = async (req, res) => {
       message: 'QR code emails processed.',
       total: participants.length,
       sent: successCount,
+      skipped: skippedCount,
       failed: failCount,
       errors,
     });
