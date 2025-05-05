@@ -60,9 +60,8 @@ const sendQRToParticipants = async (req, res) => {
         const qrCodePath = path.join(__dirname, `../../../uploads/${participant._id}.png`);
         
         if (!fs.existsSync(qrCodePath)) {
-          const qrLink = `${process.env.BASE_URL}/events/${event._id}/scan?ticketId=${participant._id}`;
-
-          await generateQRCode(`${process.env.BASE_URL}/events/${event._id}/scan`, qrLink);
+          const qrData = `${participant._id}`;
+          await generateQRCode(qrData, qrCodePath);
           console.log(`QR code generated for ${participant.name}: ${qrCodePath}`);
         }
 

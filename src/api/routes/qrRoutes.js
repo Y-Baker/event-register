@@ -5,6 +5,6 @@ const qrController = require('../controllers/qrController');
 const { requireRole } = require('../../middlewares/auth');
 
 router.get('/send', requireRole('admin'), qrController.sendQRToParticipants);
-router.post('/register-activity', requireRole('scanner', 'admin'), qrController.registerActivity);
+router.post('/scan', requireRole('scanner', 'admin'), qrController.registerActivity);
 
 module.exports = router;
