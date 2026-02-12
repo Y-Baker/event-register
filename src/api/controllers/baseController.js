@@ -26,6 +26,8 @@ const getAllRoutes = (req, res) => {
 
       { method: 'POST', path: '/api/v1/events/:eventId/qr/send', description: 'Send QR codes to participants via email' },
       { method: 'POST', path: '/api/v1/events/:eventId/qr/scan', description: 'Register a scanned activity for a participant' },
+      { method: 'GET', path: '/api/v1/events/:eventId/attendance/report', description: 'Get attendance report for an event' },
+      { method: 'GET', path: '/api/v1/events/:eventId/attendance/export', description: 'Export attendance CSV for an event' },
 
       { method: 'POST', path: '/api/v1/admin/keys/:KeyName/issue', description: 'Issue a new key' },
       { method: 'GET', path: '/api/v1/admin/keys', description: 'Get all keys' },

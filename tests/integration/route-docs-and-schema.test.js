@@ -32,6 +32,8 @@ test('route docs regression: exposes canonical event-scoped route paths', () => 
   assert.ok(routeSet.has('POST /api/v1/events/:eventId/qr/scan'));
   assert.ok(routeSet.has('POST /api/v1/events/:eventId/qr/send'));
   assert.ok(routeSet.has('POST /api/v1/events/:eventId/participants/upload'));
+  assert.ok(routeSet.has('GET /api/v1/events/:eventId/attendance/report'));
+  assert.ok(routeSet.has('GET /api/v1/events/:eventId/attendance/export'));
 
   for (const route of routes) {
     assert.equal(route.includes('/api/v1/events/:id'), false);

@@ -139,6 +139,16 @@ cd ../event-register && npm install && npm run dev
     "path": "/api/v1/events/:eventId/qr/scan",
     "description": "Register a scanned activity for a participant"
   },
+  {
+    "method": "GET",
+    "path": "/api/v1/events/:eventId/attendance/report",
+    "description": "Get attendance report for an event"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/events/:eventId/attendance/export",
+    "description": "Export attendance CSV for an event"
+  },
 
   {
     "method": "POST",

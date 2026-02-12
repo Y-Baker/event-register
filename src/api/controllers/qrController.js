@@ -15,6 +15,7 @@ const registerActivity = async (req, res) => {
     const body = req.body || {};
     const ticketId = typeof body.ticketId === 'string' ? body.ticketId.trim() : '';
     const activityQrId = typeof body.activityQrId === 'string' ? body.activityQrId.trim() : '';
+
     if (!ticketId || !activityQrId) {
       return res.status(400).json({ error: 'ticketId and activityQrId are required' });
     }
@@ -36,21 +37,31 @@ const registerActivity = async (req, res) => {
       return res.status(403).json({ error: 'Activity does not belong to this event' });
     }
 
-    const alreadyScanned = participant.scannedActivities.find(scan =>
-      scan.activityId.toString() === activity._id.toString()
+    const updateResult = await Participant.updateOne(
+      {
+        _id: participant._id,
+        eventId,
+        'scannedActivities.activityId': { $ne: activity._id },
+      },
+      {
+        $push: {
+          scannedActivities: {
+            activityId: activity._id,
+            scannedAt: new Date(),
+          },
+        },
+      }
     );
 
-    if (alreadyScanned) {
+    if (!updateResult || updateResult.modifiedCount === 0) {
       return res.status(409).json({ error: 'Activity already scanned' });
     }
-
-    participant.scannedActivities.push({ activityId: activity._id });
-    await participant.save();
 
     return res.status(200).json({ message: 'Activity scanned successfully' });
   } catch (error) {
     const status = error.status || 500;
-    return res.status(status).json({ error: status === 500 ? 'Internal server error' : error.message });
+    const message = status === 500 ? 'Internal server error' : error.message;
+    return res.status(status).json({ error: message });
   }
 }
 

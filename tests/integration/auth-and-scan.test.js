@@ -139,3 +139,42 @@ test('scan contract: query-style input is rejected when body is missing', async 
     Event.findById = originalFindEvent;
   }
 });
+
+test('scan controller hardening: duplicate scan race-safe path returns 409', async () => {
+  const originalFindEvent = Event.findById;
+  const originalFindActivity = Activity.findOne;
+  const originalFindParticipant = Participant.findById;
+  const originalUpdateOne = Participant.updateOne;
+
+  Event.findById = async () => ({ _id: '507f1f77bcf86cd799439011' });
+  Participant.findById = async () => ({
+    _id: '507f191e810c19729de860ea',
+    eventId: { toString: () => '507f1f77bcf86cd799439011' },
+  });
+  Activity.findOne = async () => ({
+    _id: '507f191e810c19729de860aa',
+    eventId: { toString: () => '507f1f77bcf86cd799439011' },
+  });
+  Participant.updateOne = async () => ({ matchedCount: 1, modifiedCount: 0 });
+
+  try {
+    const req = {
+      params: { eventId: '507f1f77bcf86cd799439011' },
+      body: {
+        ticketId: '507f191e810c19729de860ea',
+        activityQrId: 'qr-code-1',
+      },
+    };
+    const res = makeJsonRes();
+
+    await registerActivity(req, res);
+
+    assert.equal(res.statusCode, 409);
+    assert.equal(res.body.error, 'Activity already scanned');
+  } finally {
+    Event.findById = originalFindEvent;
+    Activity.findOne = originalFindActivity;
+    Participant.findById = originalFindParticipant;
+    Participant.updateOne = originalUpdateOne;
+  }
+});
