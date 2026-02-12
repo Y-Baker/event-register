@@ -9,7 +9,7 @@ process.env.ORGANIZER_ID = process.env.ORGANIZER_ID || 'integration-organizer-id
 process.env.SCANNER_ID = process.env.SCANNER_ID || 'integration-scanner-id';
 
 const { authMiddleware, requireRole } = require('../../src/middlewares/auth');
-const { registerActivity } = require('../../src/api/controllers/qrController');
+const { registerActivity, sendQRToParticipants } = require('../../src/api/controllers/qrController');
 const Event = require('../../src/models/Event');
 const Activity = require('../../src/models/Activity');
 const Participant = require('../../src/models/Participant');
@@ -83,23 +83,24 @@ test('scan scope isolation: rejects cross-event activity scans', async () => {
   const originalFindEvent = Event.findById;
   const originalFindActivity = Activity.findOne;
   const originalFindParticipant = Participant.findById;
+  const eventId = '507f1f77bcf86cd799439011';
 
-  Event.findById = async () => ({ _id: 'event-A' });
+  Event.findById = async () => ({ _id: eventId });
   Participant.findById = async () => ({
-    _id: 'participant-1',
-    eventId: { toString: () => 'event-A' },
+    _id: '507f191e810c19729de860ea',
+    eventId: { toString: () => eventId },
     scannedActivities: [],
     save: async () => {},
   });
   Activity.findOne = async () => ({
-    _id: 'activity-1',
-    eventId: { toString: () => 'event-B' },
+    _id: '507f191e810c19729de860ab',
+    eventId: { toString: () => '507f1f77bcf86cd799439012' },
   });
 
   try {
     const req = {
-      params: { eventId: 'event-A' },
-      body: { ticketId: 'participant-1', activityQrId: 'qr-1' },
+      params: { eventId },
+      body: { ticketId: '507f191e810c19729de860ea', activityQrId: 'qr-1' },
       query: {},
     };
     const res = makeJsonRes();
@@ -123,7 +124,7 @@ test('scan contract: query-style input is rejected when body is missing', async 
 
   try {
     const req = {
-      params: { eventId: 'event-A' },
+      params: { eventId: '507f1f77bcf86cd799439011' },
       body: {},
       query: { ticketId: 'participant-1', activityId: 'legacy-qr-id' },
     };
@@ -135,6 +136,48 @@ test('scan contract: query-style input is rejected when body is missing', async 
     assert.equal(res.body.error, 'ticketId and activityQrId are required');
     assert.equal(res.headers.deprecation, undefined);
     assert.equal(res.headers.sunset, undefined);
+  } finally {
+    Event.findById = originalFindEvent;
+  }
+});
+
+test('scan validation: invalid eventId returns 400 and fails fast', async () => {
+  const originalFindEvent = Event.findById;
+  Event.findById = async () => {
+    throw new Error('Event lookup should not run when eventId is invalid');
+  };
+
+  try {
+    const req = {
+      params: { eventId: 'not-an-object-id' },
+      body: { ticketId: '507f191e810c19729de860ea', activityQrId: 'qr-1' },
+    };
+    const res = makeJsonRes();
+
+    await registerActivity(req, res);
+
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.body.error, 'Invalid eventId format');
+  } finally {
+    Event.findById = originalFindEvent;
+  }
+});
+
+test('scan validation: invalid ticketId returns 400', async () => {
+  const originalFindEvent = Event.findById;
+  Event.findById = async () => ({ _id: '507f1f77bcf86cd799439011' });
+
+  try {
+    const req = {
+      params: { eventId: '507f1f77bcf86cd799439011' },
+      body: { ticketId: 'bad-id', activityQrId: 'qr-1' },
+    };
+    const res = makeJsonRes();
+
+    await registerActivity(req, res);
+
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.body.error, 'Invalid ticketId format');
   } finally {
     Event.findById = originalFindEvent;
   }
@@ -176,5 +219,27 @@ test('scan controller hardening: duplicate scan race-safe path returns 409', asy
     Activity.findOne = originalFindActivity;
     Participant.findById = originalFindParticipant;
     Participant.updateOne = originalUpdateOne;
+  }
+});
+
+test('qr send validation: invalid eventId returns 400 and fails fast', async () => {
+  const originalFindEvent = Event.findById;
+  Event.findById = async () => {
+    throw new Error('Event lookup should not run when eventId is invalid');
+  };
+
+  try {
+    const req = {
+      params: { eventId: 'not-an-object-id' },
+      body: {},
+    };
+    const res = makeJsonRes();
+
+    await sendQRToParticipants(req, res);
+
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.body.error, 'Invalid eventId format');
+  } finally {
+    Event.findById = originalFindEvent;
   }
 });

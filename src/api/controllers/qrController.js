@@ -2,6 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const mongoose = require('mongoose');
 
 const { generateQRCode } = require('../../utils/qrUtils');
 const { sendEmailEvent } = require('../../services/emailClient');
@@ -16,8 +17,16 @@ const registerActivity = async (req, res) => {
     const ticketId = typeof body.ticketId === 'string' ? body.ticketId.trim() : '';
     const activityQrId = typeof body.activityQrId === 'string' ? body.activityQrId.trim() : '';
 
+    if (!mongoose.isValidObjectId(eventId)) {
+      return res.status(400).json({ error: 'Invalid eventId format' });
+    }
+
     if (!ticketId || !activityQrId) {
       return res.status(400).json({ error: 'ticketId and activityQrId are required' });
+    }
+
+    if (!mongoose.isValidObjectId(ticketId)) {
+      return res.status(400).json({ error: 'Invalid ticketId format' });
     }
 
     const event = await Event.findById(eventId);
@@ -70,6 +79,10 @@ const sendQRToParticipants = async (req, res) => {
   const mailBody = req.body?.emailBody || undefined;
 
   try {
+    if (!mongoose.isValidObjectId(eventId)) {
+      return res.status(400).json({ error: 'Invalid eventId format' });
+    }
+
     const event = await Event.findById(eventId)
 
     if (!event) {
