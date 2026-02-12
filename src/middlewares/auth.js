@@ -1,5 +1,5 @@
-const { getKey } = require('../services/keydbService');
 const config = require('../config');
+const { verifySignedClaims } = require('../auth/claimsContract');
 
 function normalizeHeaderValue(value) {
   if (Array.isArray(value)) return value[0];
@@ -13,48 +13,53 @@ function normalizeKey(value) {
 }
 
 function assertAuthConfig() {
-  if (!normalizeKey(config.apiKeys.admin)) {
-    throw new Error('Missing required ADMIN_API_KEY');
-  }
-  if (!normalizeKey(config.apiKeys.organizerId)) {
-    throw new Error('Missing required ORGANIZER_ID');
-  }
-  if (!normalizeKey(config.apiKeys.scannerId)) {
-    throw new Error('Missing required SCANNER_ID');
+  if (!normalizeKey(config.auth?.claimsHmacSecret)) {
+    throw new Error('Missing required AUTH_CLAIMS_HMAC_SECRET');
   }
 }
 
-const getAPIKeys = async () => {
-  assertAuthConfig();
+function parseSignedClaims(req) {
+  const rawClaims = normalizeKey(normalizeHeaderValue(req.headers['x-auth-claims']));
+  const signature = normalizeKey(normalizeHeaderValue(req.headers['x-auth-signature']));
 
-  const apiKeys = new Map();
-  apiKeys.set(normalizeKey(config.apiKeys.admin), 'admin');
-
-  const organizerKey = normalizeKey(await getKey(config.apiKeys.organizerId));
-  const scannerKey = normalizeKey(await getKey(config.apiKeys.scannerId));
-  if (!organizerKey || !scannerKey) {
-    throw new Error('Role keys are unavailable (Redis missing or keys not issued)');
+  if (!rawClaims && !signature) return null;
+  if (!rawClaims || !signature) {
+    throw new Error('Missing claims or signature header');
   }
 
-  apiKeys.set(organizerKey, 'organizer');
-  apiKeys.set(scannerKey, 'scanner');
-  return apiKeys;
+  const secret = normalizeKey(config.auth?.claimsHmacSecret);
+  if (!secret) {
+    const err = new Error('Claims authentication is not configured');
+    err.code = 'AUTH_CONFIG';
+    throw err;
+  }
+
+  return verifySignedClaims(rawClaims, signature, secret);
 }
 
 const authMiddleware = async (req, res, next) => {
   try {
-    const key = normalizeKey(normalizeHeaderValue(req.headers['x-api-key']));
-    if (!key) {
-      req.auth = { role: 'anonymous', authReady: true };
+    const claims = parseSignedClaims(req);
+    if (claims) {
+      req.auth = {
+        role: claims.role,
+        scopeType: claims.scopeType,
+        scopeId: claims.scopeId,
+        source: 'claims',
+        authReady: true,
+      };
       return next();
     }
 
-    const apiKeys = await getAPIKeys();
-    const role = apiKeys.get(key) || 'anonymous';
-    req.auth = { role, authReady: true }; // Inject role into request
+    req.auth = { role: 'anonymous', authReady: true };
     return next();
   } catch (err) {
-    req.auth = { role: 'anonymous', authReady: false, error: err.message };
+    if (err.code === 'AUTH_CONFIG') {
+      req.auth = { role: 'anonymous', authReady: false, error: err.message };
+      return next();
+    }
+
+    req.auth = { role: 'anonymous', authReady: true, error: err.message };
     return next();
   }
 }
@@ -77,8 +82,40 @@ const requireRole = (...allowedRoles) => {
   };
 }
 
+const requireEventScope = () => {
+  return (req, res, next) => {
+    if (!req.auth || req.auth.authReady === false) {
+      return res.status(503).json({ error: 'Authorization subsystem unavailable' });
+    }
+    if (!req.auth || !req.auth.role || req.auth.role === 'anonymous') {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const eventId = normalizeKey(req.params?.eventId);
+    if (!eventId) {
+      return res.status(400).json({ error: 'Invalid eventId format' });
+    }
+
+    if (req.auth.role === 'admin') {
+      return next();
+    }
+    if (req.auth.scopeType === 'global') {
+      return next();
+    }
+    if (req.auth.scopeType !== 'event') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    if (normalizeKey(req.auth.scopeId) !== eventId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    return next();
+  };
+}
+
 module.exports = {
   authMiddleware,
   assertAuthConfig,
   requireRole,
+  requireEventScope,
 };

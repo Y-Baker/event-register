@@ -36,7 +36,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-change-me-strong-password}
       REDIS_URL: redis://:${REDIS_PASSWORD:-change-me-strong-password}@redis:6379
       REDIS_STREAM_EMAIL: internal
-      ADMIN_API_KEY: ${ADMIN_API_KEY:-Dz+T6MhHpQLHa7YiQDhgJMkJPU0+nP/x2krG4b5R804=}
+      AUTH_CLAIMS_HMAC_SECRET: ${AUTH_CLAIMS_HMAC_SECRET:-change-me-claims-secret}
       ORGANIZER_ID: ${ORGANIZER_ID:-IEEE-ORGANIZER-API-KEY}
       SCANNER_ID: ${SCANNER_ID:-IEEE-SCANNER-API-KEY}
       EMAIL_SERVICE_URL: ${EMAIL_SERVICE_URL:-http://localhost:5060}

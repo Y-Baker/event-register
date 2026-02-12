@@ -17,8 +17,10 @@ const config = {
 		serviceUrl: process.env.EMAIL_SERVICE_URL || null,
 		serviceAuthToken: process.env.EMAIL_SERVICE_AUTH_TOKEN || null
 	},
+	auth: {
+		claimsHmacSecret: process.env.AUTH_CLAIMS_HMAC_SECRET || ''
+	},
 	apiKeys: {
-		admin: process.env.ADMIN_API_KEY,
 		organizerId: process.env.ORGANIZER_ID,
 		scannerId: process.env.SCANNER_ID
 	}

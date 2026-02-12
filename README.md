@@ -18,8 +18,13 @@
 
 ## Auth
 
-- Set the `x-api-key` header to the API key.
-- The API key is required for the endpoint that required a role.
+- Primary auth (recommended): signed claims headers.
+  - `x-auth-claims`: base64url JSON claims containing `role`, `scope_type`, `scope_id` (for event scope).
+  - `x-auth-signature`: hex HMAC-SHA256 signature of `x-auth-claims`.
+  - Configure server secret with `AUTH_CLAIMS_HMAC_SECRET`.
+- Gateway issuer contract:
+  - Use `src/auth/claimsContract.js` function `buildSignedClaimsHeaders(...)` at the gateway edge when forwarding calls to this service.
+  - This keeps issuer/verifier behavior consistent (same claim normalization and signature format).
 
 ## Quick Start
 

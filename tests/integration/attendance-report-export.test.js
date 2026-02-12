@@ -18,11 +18,11 @@ function getBaseUrl(server) {
   return `http://127.0.0.1:${addr.port}`;
 }
 
-function createRoleApp(role) {
+function createRoleApp(role, scopeType = 'global', scopeId = null) {
   const app = express();
   app.use(express.json());
   app.use((req, res, next) => {
-    req.auth = { role, authReady: true };
+    req.auth = { role, scopeType, scopeId, authReady: true };
     next();
   });
   app.use('/api/v1/events', eventRoutes);

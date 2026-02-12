@@ -4,11 +4,10 @@ const express = require('express');
 const dotenv = require('dotenv');
 dotenv.config();
 
-process.env.ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'integration-admin-key';
-process.env.ORGANIZER_ID = process.env.ORGANIZER_ID || 'integration-organizer-id';
-process.env.SCANNER_ID = process.env.SCANNER_ID || 'integration-scanner-id';
+process.env.AUTH_CLAIMS_HMAC_SECRET = process.env.AUTH_CLAIMS_HMAC_SECRET || 'integration-claims-secret';
 
-const { authMiddleware, requireRole } = require('../../src/middlewares/auth');
+const { authMiddleware, requireRole, requireEventScope } = require('../../src/middlewares/auth');
+const { buildSignedClaimsHeaders } = require('../../src/auth/claimsContract');
 const { registerActivity, sendQRToParticipants } = require('../../src/api/controllers/qrController');
 const Event = require('../../src/models/Event');
 const Activity = require('../../src/models/Activity');
@@ -45,7 +44,7 @@ function makeJsonRes() {
   };
 }
 
-test('auth integration: protected route rejects missing x-api-key', async () => {
+test('auth integration: protected route rejects missing claims headers', async () => {
   const app = express();
   app.use(authMiddleware);
   app.get('/protected', requireRole('admin'), (req, res) => res.status(200).json({ ok: true }));
@@ -61,19 +60,111 @@ test('auth integration: protected route rejects missing x-api-key', async () => 
   }
 });
 
-test('auth integration: protected route fails closed when auth backend is unavailable', async () => {
+test('auth integration: invalid claims signature is rejected', async () => {
   const app = express();
   app.use(authMiddleware);
   app.get('/protected', requireRole('admin'), (req, res) => res.status(200).json({ ok: true }));
 
+  const claims = buildSignedClaimsHeaders({
+    role: 'admin',
+    scope_type: 'global',
+  }, process.env.AUTH_CLAIMS_HMAC_SECRET);
+
   const server = await createServer(app);
   try {
     const response = await fetch(`${getBaseUrl(server)}/protected`, {
-      headers: { 'x-api-key': 'random-invalid-key' },
+      headers: {
+        'x-auth-claims': claims['x-auth-claims'],
+        'x-auth-signature': `${claims['x-auth-signature']}invalid`,
+      },
     });
     const payload = await response.json();
-    assert.equal(response.status, 503);
-    assert.equal(payload.error, 'Authorization subsystem unavailable');
+    assert.equal(response.status, 401);
+    assert.equal(payload.error, 'Unauthorized');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('auth integration: valid claims allow access', async () => {
+  const app = express();
+  app.use(authMiddleware);
+  app.get('/protected', requireRole('admin'), (req, res) => res.status(200).json({ ok: true }));
+
+  const claims = buildSignedClaimsHeaders({
+    role: 'admin',
+    scope_type: 'global',
+  }, process.env.AUTH_CLAIMS_HMAC_SECRET);
+
+  const server = await createServer(app);
+  try {
+    const response = await fetch(`${getBaseUrl(server)}/protected`, {
+      headers: {
+        'x-auth-claims': claims['x-auth-claims'],
+        'x-auth-signature': claims['x-auth-signature'],
+      },
+    });
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.ok, true);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('event scope auth: organizer with mismatched event scope is forbidden', async () => {
+  const app = express();
+  app.use(authMiddleware);
+  app.get('/events/:eventId/protected', requireRole('organizer', 'admin'), requireEventScope(), (req, res) => {
+    return res.status(200).json({ ok: true });
+  });
+
+  const claims = buildSignedClaimsHeaders({
+    role: 'organizer',
+    scope_type: 'event',
+    scope_id: '507f1f77bcf86cd799439099',
+  }, process.env.AUTH_CLAIMS_HMAC_SECRET);
+
+  const server = await createServer(app);
+  try {
+    const response = await fetch(`${getBaseUrl(server)}/events/507f1f77bcf86cd799439011/protected`, {
+      headers: {
+        'x-auth-claims': claims['x-auth-claims'],
+        'x-auth-signature': claims['x-auth-signature'],
+      },
+    });
+    const payload = await response.json();
+    assert.equal(response.status, 403);
+    assert.equal(payload.error, 'Forbidden');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('event scope auth: organizer with matching event scope is allowed', async () => {
+  const app = express();
+  app.use(authMiddleware);
+  app.get('/events/:eventId/protected', requireRole('organizer', 'admin'), requireEventScope(), (req, res) => {
+    return res.status(200).json({ ok: true });
+  });
+
+  const claims = buildSignedClaimsHeaders({
+    role: 'organizer',
+    scope_type: 'event',
+    scope_id: '507f1f77bcf86cd799439011',
+  }, process.env.AUTH_CLAIMS_HMAC_SECRET);
+
+  const server = await createServer(app);
+  try {
+    const response = await fetch(`${getBaseUrl(server)}/events/507f1f77bcf86cd799439011/protected`, {
+      headers: {
+        'x-auth-claims': claims['x-auth-claims'],
+        'x-auth-signature': claims['x-auth-signature'],
+      },
+    });
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.ok, true);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

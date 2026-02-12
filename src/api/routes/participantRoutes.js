@@ -33,14 +33,14 @@ const upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024
 const participantController = require('../controllers/participantController');
 const { validateParticipant } = require('../validators/participantValidator');
 const validateRequest = require('../../middlewares/validateRequest');
-const { requireRole } = require('../../middlewares/auth');
+const { requireRole, requireEventScope } = require('../../middlewares/auth');
 
 
-router.post('/', requireRole('organizer', 'admin'), validateParticipant, validateRequest, participantController.addParticipant);
-router.get('/', requireRole('organizer', 'admin'), participantController.getEventParticipants);
-router.get('/:participantId', requireRole('organizer', 'admin'), participantController.getParticipantById);
+router.post('/', requireRole('organizer', 'admin'), requireEventScope(), validateParticipant, validateRequest, participantController.addParticipant);
+router.get('/', requireRole('organizer', 'admin'), requireEventScope(), participantController.getEventParticipants);
+router.get('/:participantId', requireRole('organizer', 'admin'), requireEventScope(), participantController.getParticipantById);
 
 // Bulk registration via CSV
-router.post('/upload', requireRole('organizer', 'admin'), upload.single('file'), participantController.uploadCSV);
+router.post('/upload', requireRole('organizer', 'admin'), requireEventScope(), upload.single('file'), participantController.uploadCSV);
 
 module.exports = router;
