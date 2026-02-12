@@ -23,6 +23,17 @@ function getBaseUrl(server) {
   return `http://127.0.0.1:${addr.port}`;
 }
 
+function unixNow() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function buildHeaders(claims, secret) {
+  return buildSignedClaimsHeaders({
+    ...claims,
+    exp: claims.exp ?? (unixNow() + 300),
+  }, secret);
+}
+
 function makeObjectIdFactory() {
   let counter = 1;
   return () => new mongoose.Types.ObjectId((counter++).toString(16).padStart(24, '0'));
@@ -230,7 +241,7 @@ test('e2e claims flow: organizer and scanner can complete event lifecycle', asyn
   const secret = process.env.AUTH_CLAIMS_HMAC_SECRET;
 
   try {
-    const organizerGlobalHeaders = buildSignedClaimsHeaders(
+    const organizerGlobalHeaders = buildHeaders(
       { role: 'organizer', scope_type: 'global' },
       secret
     );
@@ -252,7 +263,7 @@ test('e2e claims flow: organizer and scanner can complete event lifecycle', asyn
     const eventId = String(createEventPayload.event._id);
     assert.ok(eventId);
 
-    const organizerEventHeaders = buildSignedClaimsHeaders(
+    const organizerEventHeaders = buildHeaders(
       { role: 'organizer', scope_type: 'event', scope_id: eventId },
       secret
     );
@@ -289,7 +300,7 @@ test('e2e claims flow: organizer and scanner can complete event lifecycle', asyn
     const participantId = String(createParticipantPayload.participant._id);
     assert.ok(participantId);
 
-    const scannerEventHeaders = buildSignedClaimsHeaders(
+    const scannerEventHeaders = buildHeaders(
       { role: 'scanner', scope_type: 'event', scope_id: eventId },
       secret
     );

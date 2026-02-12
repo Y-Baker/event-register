@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
+const crypto = require('crypto');
 const dotenv = require('dotenv');
 dotenv.config();
 
@@ -22,6 +23,28 @@ function createServer(app) {
 function getBaseUrl(server) {
   const addr = server.address();
   return `http://127.0.0.1:${addr.port}`;
+}
+
+const CLAIMS_SECRET = process.env.AUTH_CLAIMS_HMAC_SECRET;
+
+function unixNow() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function buildValidClaimsHeaders(claims, opts = {}) {
+  return buildSignedClaimsHeaders({
+    ...claims,
+    exp: claims.exp ?? (unixNow() + 300),
+  }, CLAIMS_SECRET, opts);
+}
+
+function buildRawSignedHeaders(claims) {
+  const rawClaims = Buffer.from(JSON.stringify(claims), 'utf8').toString('base64url');
+  const signature = crypto.createHmac('sha256', CLAIMS_SECRET).update(rawClaims).digest('hex');
+  return {
+    'x-auth-claims': rawClaims,
+    'x-auth-signature': signature,
+  };
 }
 
 function makeJsonRes() {
@@ -65,10 +88,10 @@ test('auth integration: invalid claims signature is rejected', async () => {
   app.use(authMiddleware);
   app.get('/protected', requireRole('admin'), (req, res) => res.status(200).json({ ok: true }));
 
-  const claims = buildSignedClaimsHeaders({
+  const claims = buildValidClaimsHeaders({
     role: 'admin',
     scope_type: 'global',
-  }, process.env.AUTH_CLAIMS_HMAC_SECRET);
+  });
 
   const server = await createServer(app);
   try {
@@ -91,10 +114,10 @@ test('auth integration: valid claims allow access', async () => {
   app.use(authMiddleware);
   app.get('/protected', requireRole('admin'), (req, res) => res.status(200).json({ ok: true }));
 
-  const claims = buildSignedClaimsHeaders({
+  const claims = buildValidClaimsHeaders({
     role: 'admin',
     scope_type: 'global',
-  }, process.env.AUTH_CLAIMS_HMAC_SECRET);
+  });
 
   const server = await createServer(app);
   try {
@@ -112,6 +135,93 @@ test('auth integration: valid claims allow access', async () => {
   }
 });
 
+test('auth integration: missing exp is rejected', async () => {
+  const app = express();
+  app.use(authMiddleware);
+  app.get('/protected', requireRole('admin'), (req, res) => res.status(200).json({ ok: true }));
+
+  const headers = buildRawSignedHeaders({
+    role: 'admin',
+    scope_type: 'global',
+  });
+
+  const server = await createServer(app);
+  try {
+    const response = await fetch(`${getBaseUrl(server)}/protected`, { headers });
+    const payload = await response.json();
+    assert.equal(response.status, 401);
+    assert.equal(payload.error, 'Unauthorized');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('auth integration: expired claims are rejected', async () => {
+  const app = express();
+  app.use(authMiddleware);
+  app.get('/protected', requireRole('admin'), (req, res) => res.status(200).json({ ok: true }));
+
+  const headers = buildValidClaimsHeaders({
+    role: 'admin',
+    scope_type: 'global',
+    exp: unixNow() - 31,
+  });
+
+  const server = await createServer(app);
+  try {
+    const response = await fetch(`${getBaseUrl(server)}/protected`, { headers });
+    const payload = await response.json();
+    assert.equal(response.status, 401);
+    assert.equal(payload.error, 'Unauthorized');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('auth integration: claims exceeding max lifetime are rejected', async () => {
+  const app = express();
+  app.use(authMiddleware);
+  app.get('/protected', requireRole('admin'), (req, res) => res.status(200).json({ ok: true }));
+
+  const headers = buildValidClaimsHeaders({
+    role: 'admin',
+    scope_type: 'global',
+    exp: unixNow() + 931,
+  });
+
+  const server = await createServer(app);
+  try {
+    const response = await fetch(`${getBaseUrl(server)}/protected`, { headers });
+    const payload = await response.json();
+    assert.equal(response.status, 401);
+    assert.equal(payload.error, 'Unauthorized');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('auth integration: issuer TTL helper creates valid claims', async () => {
+  const app = express();
+  app.use(authMiddleware);
+  app.get('/protected', requireRole('admin'), (req, res) => res.status(200).json({ ok: true }));
+
+  const headers = buildSignedClaimsHeaders(
+    { role: 'admin', scope_type: 'global' },
+    CLAIMS_SECRET,
+    { ttlSeconds: 120 }
+  );
+
+  const server = await createServer(app);
+  try {
+    const response = await fetch(`${getBaseUrl(server)}/protected`, { headers });
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.ok, true);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('event scope auth: organizer with mismatched event scope is forbidden', async () => {
   const app = express();
   app.use(authMiddleware);
@@ -119,11 +229,11 @@ test('event scope auth: organizer with mismatched event scope is forbidden', asy
     return res.status(200).json({ ok: true });
   });
 
-  const claims = buildSignedClaimsHeaders({
+  const claims = buildValidClaimsHeaders({
     role: 'organizer',
     scope_type: 'event',
     scope_id: '507f1f77bcf86cd799439099',
-  }, process.env.AUTH_CLAIMS_HMAC_SECRET);
+  });
 
   const server = await createServer(app);
   try {
@@ -148,11 +258,11 @@ test('event scope auth: organizer with matching event scope is allowed', async (
     return res.status(200).json({ ok: true });
   });
 
-  const claims = buildSignedClaimsHeaders({
+  const claims = buildValidClaimsHeaders({
     role: 'organizer',
     scope_type: 'event',
     scope_id: '507f1f77bcf86cd799439011',
-  }, process.env.AUTH_CLAIMS_HMAC_SECRET);
+  });
 
   const server = await createServer(app);
   try {

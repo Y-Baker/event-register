@@ -45,6 +45,7 @@ const authMiddleware = async (req, res, next) => {
         role: claims.role,
         scopeType: claims.scopeType,
         scopeId: claims.scopeId,
+        exp: claims.exp,
         source: 'claims',
         authReady: true,
       };

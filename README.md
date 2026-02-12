@@ -19,11 +19,13 @@
 ## Auth
 
 - Primary auth (recommended): signed claims headers.
-  - `x-auth-claims`: base64url JSON claims containing `role`, `scope_type`, `scope_id` (for event scope).
+  - `x-auth-claims`: base64url JSON claims containing `role`, `scope_type`, `scope_id` (for event scope), and `exp` (Unix seconds).
   - `x-auth-signature`: hex HMAC-SHA256 signature of `x-auth-claims`.
   - Configure server secret with `AUTH_CLAIMS_HMAC_SECRET`.
+  - Verification policy: `exp` is required, claims expire with 30s clock skew tolerance, and max lifetime is 15 minutes (+30s skew).
 - Gateway issuer contract:
   - Use `src/auth/claimsContract.js` function `buildSignedClaimsHeaders(...)` at the gateway edge when forwarding calls to this service.
+  - Pass either explicit `exp` in claims or issuer options `{ ttlSeconds, nowSeconds? }`.
   - This keeps issuer/verifier behavior consistent (same claim normalization and signature format).
 
 ## Quick Start
