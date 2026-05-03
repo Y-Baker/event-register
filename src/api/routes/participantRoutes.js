@@ -38,9 +38,10 @@ const { requireRole, requireEventScope } = require('../../middlewares/auth');
 
 router.post('/', requireRole('organizer', 'admin'), requireEventScope(), validateParticipant, validateRequest, participantController.addParticipant);
 router.get('/', requireRole('organizer', 'admin'), requireEventScope(), participantController.getEventParticipants);
-router.get('/:participantId', requireRole('organizer', 'admin'), requireEventScope(), participantController.getParticipantById);
 
 // Bulk registration via CSV
 router.post('/upload', requireRole('organizer', 'admin'), requireEventScope(), upload.single('file'), participantController.uploadCSV);
+
+router.get('/:participantId', requireRole('organizer', 'admin'), requireEventScope(), participantController.getParticipantById);
 
 module.exports = router;

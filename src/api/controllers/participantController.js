@@ -1,6 +1,7 @@
 #!/usr/bin/node
 
 const fs = require('fs');
+const mongoose = require('mongoose');
 const csv = require('../../utils/csvUtils');
 const { validateParticipantObject } = require('../validators/participantValidator');
 const Participant  = require('../../models/Participant');
@@ -115,6 +116,10 @@ const getEventParticipants = async (req, res) => {
 
 const getParticipantById = async (req, res) => {
   const { eventId, participantId } = req.params;
+
+  if (!mongoose.isValidObjectId(participantId)) {
+    return res.status(400).json({ error: 'Invalid participantId format' });
+  }
 
   const event = await Event.findById(eventId);
   if (!event) {

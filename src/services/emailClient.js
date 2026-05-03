@@ -21,7 +21,7 @@ function buildPayload({ to, subject, text, templateId, templateVersion, template
     attachments: (attachments || []).map(a => ({
       filename: a.filename,
       mimeType: a.mimeType || 'application/octet-stream',
-      content: a.contentBase64 // caller must provide base64
+      content: a.contentBase64 // email-service expects the base64 payload in `content`
     })),
     priority: priority || 'normal',
     createdAt: new Date().toISOString()
