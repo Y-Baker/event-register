@@ -9,6 +9,7 @@ Or rely on AUTH_CLAIMS_HMAC_SECRET from env and pass flags.
 */
 
 const { buildSignedClaimsHeaders } = require('../src/auth/claimsContract');
+const config = require('../src/config');
 
 function parseArgs() {
   const argv = process.argv.slice(2);
@@ -28,9 +29,9 @@ function usageAndExit(code = 1) {
 
 async function main() {
   const args = parseArgs();
-  const secret = process.env.AUTH_CLAIMS_HMAC_SECRET || args.secret;
+  const secret = config.auth?.claimsHmacSecret || args.secret;
   if (!secret) {
-    console.error('ERROR: AUTH_CLAIMS_HMAC_SECRET must be provided as env or --secret.');
+    console.error('ERROR: AUTH_CLAIMS_HMAC_SECRET must be provided in config/.env or --secret.');
     usageAndExit(2);
   }
 
@@ -52,7 +53,7 @@ async function main() {
     console.log('x-auth-claims:', headers['x-auth-claims']);
     console.log('x-auth-signature:', headers['x-auth-signature']);
 
-    const host = process.env.EXAMPLE_HOST || 'http://localhost:5000';
+    const host = config.baseUrl || 'http://localhost:5000';
     console.log('\nExample curl using the headers:');
     console.log(`curl -X GET ${host}/api/v1/events -H "x-auth-claims: ${headers['x-auth-claims']}" -H "x-auth-signature: ${headers['x-auth-signature']}"`);
 

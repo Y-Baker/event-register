@@ -1,9 +1,10 @@
 const crypto = require('crypto');
+const config = require('../config');
 
 const ALLOWED_ROLES = new Set(['admin', 'organizer', 'scanner']);
 const ALLOWED_SCOPE_TYPES = new Set(['global', 'event']);
-const MAX_CLAIMS_LIFETIME_SECONDS = 15 * 60;
-const CLAIMS_CLOCK_SKEW_SECONDS = 30;
+const MAX_CLAIMS_LIFETIME_SECONDS = config.auth?.maxClaimsLifetimeSeconds || 15 * 60;
+const CLAIMS_CLOCK_SKEW_SECONDS = config.auth?.claimsClockSkewSeconds || 30;
 
 function normalizeKey(value) {
   if (typeof value !== 'string') return null;

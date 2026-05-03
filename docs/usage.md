@@ -8,6 +8,7 @@ This service manages events, activities, participants, QR-code check-in, attenda
 - MongoDB available through `MONGO_URI`.
 - Redis available through `REDIS_URL` or `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD`.
 - `AUTH_CLAIMS_HMAC_SECRET` configured so signed auth claims can be verified.
+- Optional `MAX_CLAIMS_LIFETIME_SECONDS` and `CLAIMS_CLOCK_SKEW_SECONDS` in `.env` if you want to override the default claim window.
 - Optional email delivery integration through `REDIS_STREAM_EMAIL` and `EMAIL_SERVICE_URL`.
 
 ## Run Locally
@@ -190,3 +191,75 @@ curl -X POST http://localhost:5000/api/v1/events/<eventId>/qr/scan \
 - The README example previously used `phone`, but the API expects `phoneNumber` for manual participant creation.
 - The CSV importer is more permissive and maps `Phone` or `Number` into `phoneNumber`.
 - The service root route `GET /api/v1/` is admin-only; health checks are the safest unauthenticated entry points for smoke testing.
+
+## Deployment (step-by-step)
+
+This section covers deploying the service with Docker Compose (recommended for local and small installs) and brief production notes.
+
+1. Prepare environment variables. Create a `.env` file in the service folder or export variables in your environment. Minimal example:
+
+```env
+# Service
+PORT=5050
+NODE_ENV=production
+
+# MongoDB
+MONGO_URI=mongodb://mongo:27017/ieee-registration
+
+# Redis (used for streams and role keys)
+REDIS_PASSWORD=change-me-strong-password
+REDIS_URL=redis://:change-me-strong-password@redis:6379
+REDIS_STREAM_EMAIL=internal
+
+# Auth claims HMAC secret (required)
+AUTH_CLAIMS_HMAC_SECRET=replace-with-a-very-long-secret
+
+# Role key names (used as Redis keys)
+ORGANIZER_ID=IEEE-ORGANIZER-API-KEY
+SCANNER_ID=IEEE-SCANNER-API-KEY
+
+# Email service fallback (optional)
+EMAIL_SERVICE_URL=http://email-service:5060
+EMAIL_SERVICE_AUTH_TOKEN=replace-with-email-service-token
+```
+
+2. Start with Docker Compose (provided in the repo):
+
+```bash
+cd services/event-register
+docker compose up -d --build
+```
+
+3. Watch logs and verify health:
+
+```bash
+docker compose logs -f app
+curl http://localhost:5050/api/v1/health
+curl http://localhost:5050/api/v1/health/db
+curl http://localhost:5050/api/v1/health/redis
+```
+
+4. If you use external managed MongoDB/Redis, set `MONGO_URI` and `REDIS_URL` accordingly and remove the local `mongo`/`redis` services from your compose or use separate stacks.
+
+5. Sending emails: the service enqueues to Redis stream defined by `REDIS_STREAM_EMAIL`. Ensure the email-service is running and configured with the same Redis or provide `EMAIL_SERVICE_URL` + `EMAIL_SERVICE_AUTH_TOKEN` for HTTP fallback.
+
+6. Updating / rolling restart:
+
+```bash
+docker compose pull
+docker compose up -d --no-deps --build app
+```
+
+Production recommendations
+
+- Use a managed MongoDB (Atlas, Azure Cosmos, etc.) and managed Redis for reliability.
+- Store secrets (AUTH_CLAIMS_HMAC_SECRET, EMAIL_SERVICE_AUTH_TOKEN, DB credentials) in a secrets manager and inject at runtime rather than committing `.env` files.
+- Enable TLS at the ingress (the provided compose has an nginx container, adapt certs for production or place behind a load balancer).
+- Configure backups for MongoDB and persistent volumes for Redis if self-hosted.
+- Monitor logs and health endpoints; add alerting for failed health checks.
+
+Kubernetes (brief)
+
+- Build and push the image defined by the `Dockerfile` to a registry.
+- Create `Deployment` and `Service` manifests, map environment variables from `Secrets`/`ConfigMap`, and mount persistent volumes for uploads if needed.
+- Wire MongoDB and Redis as external services or StatefulSets depending on scale; use `HorizontalPodAutoscaler` and readiness/liveness probes pointing to `/api/v1/health`.
