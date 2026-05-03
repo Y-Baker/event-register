@@ -1,6 +1,8 @@
 # Event Registration Service
 
-## Resposiablities
+For a step-by-step usage guide, see [docs/usage.md](docs/usage.md).
+
+## Responsibilities
 
 - Create and manage events.
 - Create and manage activities for events.
