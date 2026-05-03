@@ -41,6 +41,9 @@ const authMiddleware = async (req, res, next) => {
   try {
     const claims = parseSignedClaims(req);
     if (claims) {
+      console.log(
+        `[auth] verified claims for ${req.method} ${req.originalUrl} role=${claims.role} scopeType=${claims.scopeType} scopeId=${claims.scopeId ?? 'null'} exp=${claims.exp}`
+      );
       req.auth = {
         role: claims.role,
         scopeType: claims.scopeType,
@@ -53,8 +56,12 @@ const authMiddleware = async (req, res, next) => {
     }
 
     req.auth = { role: 'anonymous', authReady: true };
+    console.log(`[auth] no claims headers for ${req.method} ${req.originalUrl}; continuing as anonymous`);
     return next();
   } catch (err) {
+    console.warn(
+      `[auth] claims verification failed for ${req.method} ${req.originalUrl}: ${err.message}`
+    );
     if (err.code === 'AUTH_CONFIG') {
       req.auth = { role: 'anonymous', authReady: false, error: err.message };
       return next();
