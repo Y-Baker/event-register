@@ -32,7 +32,7 @@ const config = {
 	},
 	auth: {
 		claimsHmacSecret: process.env.AUTH_CLAIMS_HMAC_SECRET || '',
-		maxClaimsLifetimeSeconds: parseEnvInteger(process.env.MAX_CLAIMS_LIFETIME_SECONDS, 15 * 60),
+		maxClaimsLifetimeSeconds: parseEnvInteger(process.env.MAX_CLAIMS_LIFETIME_SECONDS, 604800),
 		claimsClockSkewSeconds: parseEnvInteger(process.env.CLAIMS_CLOCK_SKEW_SECONDS, 30)
 	},
 	apiKeys: {

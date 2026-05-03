@@ -3,7 +3,7 @@ const config = require('../config');
 
 const ALLOWED_ROLES = new Set(['admin', 'organizer', 'scanner']);
 const ALLOWED_SCOPE_TYPES = new Set(['global', 'event']);
-const MAX_CLAIMS_LIFETIME_SECONDS = config.auth?.maxClaimsLifetimeSeconds || 15 * 60;
+const MAX_CLAIMS_LIFETIME_SECONDS = config.auth?.maxClaimsLifetimeSeconds || 604800;
 const CLAIMS_CLOCK_SKEW_SECONDS = config.auth?.claimsClockSkewSeconds || 30;
 
 function normalizeKey(value) {
