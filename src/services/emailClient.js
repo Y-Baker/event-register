@@ -31,8 +31,6 @@ function buildPayload({ to, subject, text, templateId, templateVersion, template
 async function sendEmailEvent(opts) {
   const payload = buildPayload(opts);
   try {
-    // Pause Stream
-    throw new Error('Simulated Stream failure');
     await publishToStream(STREAM, payload);
     return { queued: true, id: payload.id };
   } catch (e) {
