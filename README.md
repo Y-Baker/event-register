@@ -41,7 +41,7 @@ For a step-by-step usage guide, see [docs/usage.md](docs/usage.md).
 - Email sending is handled by a separate service in `../email-service`.
 - Set in `.env`:
   - `REDIS_STREAM_EMAIL=internal`
-  - `EMAIL_SERVICE_URL=http://localhost:5060` (optional HTTP fallback)
+  - `EMAIL_SERVICE_URL=http://localhost:3060` (optional HTTP fallback)
   - `EMAIL_SERVICE_AUTH_TOKEN=<same token used by email-service>`
 - Ensure `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` are correct for both services.
 - Controller `src/api/controllers/qrController.js` now publishes email events with base64 PNG attachments.

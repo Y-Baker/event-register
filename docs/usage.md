@@ -219,7 +219,7 @@ ORGANIZER_ID=IEEE-ORGANIZER-API-KEY
 SCANNER_ID=IEEE-SCANNER-API-KEY
 
 # Email service fallback (optional)
-EMAIL_SERVICE_URL=http://email-service:5060
+EMAIL_SERVICE_URL=http://email-service:3060
 EMAIL_SERVICE_AUTH_TOKEN=replace-with-email-service-token
 ```
 

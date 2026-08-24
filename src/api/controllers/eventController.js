@@ -4,9 +4,9 @@ const Event = require('../../models/Event');
 
 const createEvent = async (req, res) => {
   try {
-    const { name, description, date, location } = req.body;
+    const { name, description, date, location, bannerUrl, coverImageUrl } = req.body;
 
-    const event = new Event({ name, description, date, location });
+    const event = new Event({ name, description, date, location, bannerUrl, coverImageUrl });
     await event.save();
 
     res.status(201).json({ message: 'Event created', event });

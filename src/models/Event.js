@@ -19,6 +19,16 @@ const eventSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  bannerUrl: {
+    type: String,
+    trim: true,
+    default: null,
+  },
+  coverImageUrl: {
+    type: String,
+    trim: true,
+    default: null,
+  },
   participants: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Participant',

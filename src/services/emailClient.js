@@ -4,7 +4,7 @@ const config = require('../config');
 const { randomUUID } = require('crypto');
 
 const STREAM = config.email.stream;
-const EMAIL_SERVICE_URL = config.email.serviceUrl; // e.g. http://localhost:5060
+const EMAIL_SERVICE_URL = config.email.serviceUrl; // e.g. http://localhost:3060
 const EMAIL_SERVICE_AUTH_TOKEN = config.email.serviceAuthToken;
 
 function buildPayload({ to, subject, text, templateId, templateVersion, templateVars, attachments, priority }) {

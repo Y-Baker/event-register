@@ -1,4 +1,6 @@
-require('dotenv').config();
+if (process.env.NODE_ENV !== 'test') {
+	require('dotenv').config();
+}
 
 function parseEnvInteger(value, fallback) {
 	if (value === undefined || value === null || String(value).trim() === '') {
