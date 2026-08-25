@@ -5,8 +5,6 @@ const config = require('./config');
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
-const fs = require('fs');
-const path = require('path');
 
 const eventRoutes = require('./api/routes/eventRoutes');
 const baseRoutes = require('./api/routes/baseRoutes');
@@ -22,7 +20,6 @@ try {
   process.exit(1);
 }
 
-
 const app = express();
 
 // Connect to MongoDB
@@ -37,7 +34,10 @@ if (!MONGO_URI || typeof MONGO_URI !== 'string') {
       console.log("✅ MongoDB connected");
     })
     .catch((err) => {
-      console.error("MongoDB connection error:", err);
+      console.error("❌ MongoDB connection error:", err);
+      if (process.env.NODE_ENV === 'production') {
+        process.exit(1);
+      }
     });
 }
 
@@ -54,7 +54,7 @@ if (!hasRedisConfig) {
 }
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(cors());
 app.use(authMiddleware);
 
@@ -63,7 +63,7 @@ app.use('/api/v1/events', eventRoutes);
 app.use('/api/v1', baseRoutes);
 app.use('/api/v1/admin', adminRoutes);
 
-// Error handling
+// Central error handling
 app.use((err, req, res, next) => {
   console.error(err.stack);
 
@@ -74,26 +74,27 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 Handler
+// JSON 404 Handler
 app.use((req, res) => {
-  const imagePath = path.join(__dirname, '../', '404.jpg');
-
-  fs.readFile(imagePath, (err, data) => {
-    if (err) {
-      res.status(500).send('Error loading 404 image.');
-    } else {
-      res.writeHead(404, {
-        'Content-Type': 'image/jpeg',
-        'Content-Length': data.length
-      });
-      res.end(data);
-    }
-  });
+  res.status(404).json({ error: 'Not found' });
 });
 
 // Start the server
-app.listen(Port, '0.0.0.0', () => {
+const server = app.listen(Port, '0.0.0.0', () => {
   console.log(`Server is running on port ${Port}`);
 });
+
+// Graceful shutdown
+const handleShutdown = async (signal) => {
+  console.log(`Received ${signal}, shutting down Event Register gracefully...`);
+  if (server) {
+    await new Promise((resolve) => server.close(resolve));
+  }
+  await mongoose.disconnect().catch(() => {});
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+process.on('SIGINT', () => handleShutdown('SIGINT'));
 
 module.exports = app;

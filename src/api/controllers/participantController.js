@@ -100,19 +100,18 @@ const uploadCSV = async (req, res) => {
 const getEventParticipants = async (req, res) => {
   const { eventId } = req.params;
 
-  const event = await Event.findById(eventId)
+  if (!mongoose.isValidObjectId(eventId)) {
+    return res.status(400).json({ error: 'Invalid eventId format' });
+  }
 
+  const event = await Event.findById(eventId);
   if (!event) {
     return res.status(404).json({ error: 'Event not found' });
   }
 
   const participants = await Participant.find({ eventId: event._id });
-  if (!participants || participants.length === 0) {
-    return res.status(404).json({ error: 'No participants found for this event' });
-  }
-
-  res.status(200).json({ participants });
-}
+  return res.status(200).json({ participants: participants || [] });
+};
 
 const getParticipantById = async (req, res) => {
   const { eventId, participantId } = req.params;

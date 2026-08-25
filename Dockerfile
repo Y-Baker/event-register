@@ -1,34 +1,26 @@
-# Use official Node LTS image
-FROM node:22-alpine
-
-# Create app directory
+# Stage 1: Build & Dependencies
+FROM node:22-alpine AS deps
 WORKDIR /app
-
-# Install OS deps needed by node-gyp (if any packages require)
-RUN apk add --no-cache python3 make g++
-
-# Copy package manifests first for better caching
-COPY package.json package-lock.json* ./
-
-# Install production dependencies
+COPY package*.json ./
 RUN npm ci --omit=dev || npm install --omit=dev
 
-# Copy source code
-COPY . .
-
-# Ensure uploads directory exists (for multer)
-RUN mkdir -p /app/uploads
-
-# Environment
+# Stage 2: Production Runner
+FROM node:22-alpine AS runner
+WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=5050
 
-# Expose service port
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Create uploads directory with ownership for non-root node user
+RUN mkdir -p /app/uploads && chown -R node:node /app
+
+USER node
+
 EXPOSE 5050
 
-# Healthcheck (optional): checks server port is listening
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
- CMD wget -qO- http://localhost:${PORT}/ || exit 1
+HEALTHCHECK --interval=20s --timeout=5s --start-period=15s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:5050/api/v1/health || exit 1
 
-# Run the app
 CMD ["node", "src/index.js"]

@@ -1,14 +1,12 @@
 #!/usr/bin/node
 
-const path = require('path');
-const fs = require('fs');
 const mongoose = require('mongoose');
 
-const { generateQRCode } = require('../../utils/qrUtils');
+const { generateQRCodeBuffer } = require('../../utils/qrUtils');
 const { sendEmailEvent } = require('../../services/emailClient');
 const Event = require('../../models/Event');
 const Activity = require('../../models/Activity');
-const Participant  = require('../../models/Participant');
+const Participant = require('../../models/Participant');
 
 const registerActivity = async (req, res) => {
   try {
@@ -72,7 +70,7 @@ const registerActivity = async (req, res) => {
     const message = status === 500 ? 'Internal server error' : error.message;
     return res.status(status).json({ error: message });
   }
-}
+};
 
 const sendQRToParticipants = async (req, res) => {
   const { eventId } = req.params;
@@ -83,14 +81,21 @@ const sendQRToParticipants = async (req, res) => {
       return res.status(400).json({ error: 'Invalid eventId format' });
     }
 
-    const event = await Event.findById(eventId)
-
+    const event = await Event.findById(eventId);
     if (!event) {
       return res.status(404).json({ error: 'Event not found' });
     }
+
     const participants = await Participant.find({ eventId });
     if (!participants || participants.length === 0) {
-      return res.status(404).json({ error: 'No participants found for this event' });
+      return res.status(200).json({
+        message: 'No participants found for this event.',
+        total: 0,
+        sent: 0,
+        skipped: 0,
+        failed: 0,
+        errors: [],
+      });
     }
 
     let successCount = 0;
@@ -100,22 +105,20 @@ const sendQRToParticipants = async (req, res) => {
 
     for (const participant of participants) {
       try {
-        const qrCodePath = path.join(__dirname, `../../../uploads/${participant._id}.png`);
-        
         if (participant.qrSent) {
           skippedCount++;
           continue;
         }
 
-        if (!fs.existsSync(qrCodePath)) {
-          const qrData = `${participant._id}`;
-          await generateQRCode(qrData, qrCodePath);
-          console.log(`QR code generated for ${participant.name}: ${qrCodePath}`);
-        }
+        // Generate QR code directly in memory without disk I/O
+        const qrBuffer = await generateQRCodeBuffer(String(participant._id));
+        const contentBase64 = qrBuffer.toString('base64');
 
-        const emailText = (mailBody || (`Hello ${participant.name},\n\nAttached is your QR code for the event: ${event.name}. Please bring it with you to scan for check-in.`)) + `\n\nBest regards,\nIEEE Menoufia Student Branch`;
+        const emailText =
+          (mailBody ||
+            `Hello ${participant.name},\n\nAttached is your QR code for the event: ${event.name}. Please bring it with you to scan for check-in.`) +
+          `\n\nBest regards,\nIEEE Menoufia Student Branch`;
 
-        const contentBase64 = fs.readFileSync(qrCodePath).toString('base64');
         await sendEmailEvent({
           to: participant.email,
           subject: 'Your Event QR Code',
@@ -124,19 +127,13 @@ const sendQRToParticipants = async (req, res) => {
             {
               filename: `${participant._id}.png`,
               mimeType: 'image/png',
-              contentBase64
-            }
-          ]
-        })
-        .then(() => {
-          participant.qrSent = true;
-        })
-        .catch((err) => {
-          participant.qrSent = false;
-          throw new Error(`Failed to enqueue/send email: ${err.message}`);
+              contentBase64,
+            },
+          ],
         });
+
+        participant.qrSent = true;
         await participant.save();
-        fs.unlinkSync(qrCodePath);
         successCount++;
       } catch (err) {
         failCount++;
@@ -144,7 +141,7 @@ const sendQRToParticipants = async (req, res) => {
       }
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       message: 'QR code emails processed.',
       total: participants.length,
       sent: successCount,
@@ -152,15 +149,13 @@ const sendQRToParticipants = async (req, res) => {
       failed: failCount,
       errors,
     });
-
   } catch (error) {
     console.error('Error sending QR codes to participants:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 };
 
-
 module.exports = {
   sendQRToParticipants,
-  registerActivity
+  registerActivity,
 };
