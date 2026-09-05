@@ -83,12 +83,32 @@ const requireRole = (...allowedRoles) => {
     if (req.auth.role === 'anonymous') {
       return res.status(401).json({ error: 'Unauthorized' });
     }
-    if (!allowedRoles.includes(req.auth.role)) {
+
+    const role = req.auth.role;
+    if (role === 'admin') {
+      return next();
+    }
+
+    const effectiveAllowed = new Set(allowedRoles);
+    if (effectiveAllowed.has('organizer') || effectiveAllowed.has('event_organizer')) {
+      effectiveAllowed.add('lead');
+      effectiveAllowed.add('officer');
+      effectiveAllowed.add('event_organizer');
+      effectiveAllowed.add('organizer');
+    }
+    if (effectiveAllowed.has('scanner') || effectiveAllowed.has('event_scanner')) {
+      effectiveAllowed.add('scanner');
+      effectiveAllowed.add('event_scanner');
+      effectiveAllowed.add('lead');
+      effectiveAllowed.add('officer');
+    }
+
+    if (!effectiveAllowed.has(role)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     next();
   };
-}
+};
 
 const requireEventScope = () => {
   return (req, res, next) => {
@@ -110,16 +130,19 @@ const requireEventScope = () => {
     if (req.auth.scopeType === 'global') {
       return next();
     }
-    if (req.auth.scopeType !== 'event') {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (req.auth.scopeType === 'committee') {
+      return next();
     }
-    if (normalizeKey(req.auth.scopeId) !== eventId) {
+    if (req.auth.scopeType === 'event') {
+      if (normalizeKey(req.auth.scopeId) === eventId) {
+        return next();
+      }
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    return next();
+    return res.status(403).json({ error: 'Forbidden' });
   };
-}
+};
 
 module.exports = {
   authMiddleware,

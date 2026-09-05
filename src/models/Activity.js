@@ -11,16 +11,48 @@ const activitySchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
+    trim: true,
   },
-  type: { // e.g., 'check-in', 'meal', 'workshop'
+  type: {
     type: String,
     required: true,
+    trim: true,
+    default: 'check-in',
+  },
+  points: {
+    type: Number,
+    default: 10,
+    min: 0,
+  },
+  isLocked: {
+    type: Boolean,
+    default: false,
+  },
+  checkInMode: {
+    type: String,
+    enum: ['staff_scanner', 'self_service'],
+    default: 'staff_scanner',
   },
   qrId: {
     type: String,
     required: true,
     unique: true,
-  }
+  },
+  description: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  isActive: {
+    type: Boolean,
+    default: true,
+  },
+  order: {
+    type: Number,
+    default: 0,
+  },
 }, { timestamps: true });
+
+activitySchema.index({ eventId: 1, qrId: 1 });
 
 module.exports = mongoose.model('Activity', activitySchema);

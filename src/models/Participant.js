@@ -3,15 +3,36 @@
 const mongoose = require('mongoose');
 
 const participantSchema = new mongoose.Schema({
-  name: { type: String, required: true },
+  name: { type: String, required: true, trim: true },
   email: { type: String, required: true, trim: true, lowercase: true },
-  phoneNumber: String,
-  university: String,
-  faculty: String,
-  major: String,
+  phoneNumber: { type: String, trim: true, default: null },
+  university: { type: String, trim: true, default: null },
+  faculty: { type: String, trim: true, default: null },
+  major: { type: String, trim: true, default: null },
+  customResponses: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
+  status: {
+    type: String,
+    enum: ['registered', 'ticket_sent', 'checked_in', 'cancelled'],
+    default: 'registered',
+  },
+  registeredByUserId: {
+    type: String,
+    default: null,
+  },
+  pointsAwarded: {
+    type: Number,
+    default: 0,
+  },
   qrSent: {
     type: Boolean,
     default: false,
+  },
+  qrSentAt: {
+    type: Date,
+    default: null,
   },
   eventId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -21,7 +42,8 @@ const participantSchema = new mongoose.Schema({
   scannedActivities: [{
     _id: false,
     activityId: { type: mongoose.Schema.Types.ObjectId, ref: 'Activity' },
-    scannedAt: { type: Date, default: Date.now }
+    scannedAt: { type: Date, default: Date.now },
+    pointsEarned: { type: Number, default: 0 },
   }],
 }, { timestamps: true });
 
