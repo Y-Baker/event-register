@@ -12,7 +12,7 @@ const ALLOWED_ROLES = new Set([
   'member',
   'visitor',
 ]);
-const ALLOWED_SCOPE_TYPES = new Set(['global', 'event']);
+const ALLOWED_SCOPE_TYPES = new Set(['global', 'event', 'committee']);
 const MAX_CLAIMS_LIFETIME_SECONDS = config.auth?.maxClaimsLifetimeSeconds || 604800;
 const CLAIMS_CLOCK_SKEW_SECONDS = config.auth?.claimsClockSkewSeconds || 30;
 
