@@ -541,6 +541,144 @@ const getGlobalStats = async (req, res) => {
 
 const getGlobalKPIs = getGlobalStats;
 
+/**
+ * Public Event Leaderboard: Returns ranked participants by points awarded.
+ * Shows full attendee name (without cutting).
+ * Strictly excludes email, phone, and internal IDs from attendee items.
+ */
+const getPublicLeaderboard = async (req, res) => {
+  const { eventId } = req.params;
+  const limitParam = parseInt(req.query.limit, 10);
+  const limit = Math.min(Math.max(Number.isInteger(limitParam) ? limitParam : 100, 10), 500);
+
+  try {
+    if (!mongoose.isValidObjectId(eventId)) {
+      return res.status(400).json({ error: 'Invalid eventId format' });
+    }
+
+    const event = await Event.findById(eventId).select('name description startDate endDate venue location coverImageUrl status');
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const participants = await Participant.find({ eventId })
+      .select('name pointsAwarded scannedActivities createdAt')
+      .sort({ pointsAwarded: -1, createdAt: 1 })
+      .lean();
+
+    const totalParticipants = participants.length;
+    let totalPointsDistributed = 0;
+    let rankedWithPointsCount = 0;
+
+    let currentRank = 1;
+    const rankedList = participants.map((p, idx) => {
+      const points = p.pointsAwarded || 0;
+      totalPointsDistributed += points;
+      if (points > 0) {
+        rankedWithPointsCount++;
+      }
+
+      if (idx > 0 && points < (participants[idx - 1].pointsAwarded || 0)) {
+        currentRank = idx + 1;
+      }
+
+      return {
+        rank: currentRank,
+        name: p.name || 'Anonymous Participant',
+        pointsAwarded: points,
+        completedActivitiesCount: Array.isArray(p.scannedActivities) ? p.scannedActivities.length : 0,
+      };
+    });
+
+    const leaderboard = rankedList.slice(0, limit);
+    const podium = rankedList.slice(0, 3);
+
+    return res.status(200).json({
+      success: true,
+      event: {
+        id: event._id,
+        name: event.name,
+        description: event.description,
+        startDate: event.startDate,
+        endDate: event.endDate,
+        venue: event.venue || event.location || 'IEEE MSB Campus',
+        coverImageUrl: event.coverImageUrl || null,
+        status: event.status,
+      },
+      stats: {
+        totalParticipants,
+        rankedParticipants: rankedWithPointsCount,
+        totalPointsDistributed,
+        displayedCount: leaderboard.length,
+      },
+      podium,
+      leaderboard,
+    });
+  } catch (err) {
+    console.error('Error fetching public leaderboard:', err);
+    return res.status(500).json({ error: 'Failed to retrieve event leaderboard', details: err.message });
+  }
+};
+
+/**
+ * Public Attendee "Find My Rank":
+ * Looks up attendee rank and completed activities by their registered email address.
+ */
+const lookupParticipantRank = async (req, res) => {
+  const { eventId } = req.params;
+  const rawEmail = req.query.email || req.body?.email;
+
+  try {
+    if (!mongoose.isValidObjectId(eventId)) {
+      return res.status(400).json({ error: 'Invalid eventId format' });
+    }
+
+    if (!rawEmail || typeof rawEmail !== 'string') {
+      return res.status(400).json({ error: 'Email query parameter is required' });
+    }
+
+    const email = rawEmail.trim().toLowerCase();
+    const participant = await Participant.findOne({ eventId, email })
+      .select('name pointsAwarded scannedActivities createdAt')
+      .lean();
+
+    if (!participant) {
+      return res.status(404).json({ error: 'No attendee found registered with this email for this event' });
+    }
+
+    const points = participant.pointsAwarded || 0;
+
+    const higherScoreCount = await Participant.countDocuments({
+      eventId,
+      $or: [
+        { pointsAwarded: { $gt: points } },
+        { pointsAwarded: points, createdAt: { $lt: participant.createdAt } },
+      ],
+    });
+    const rank = higherScoreCount + 1;
+    const totalParticipants = await Participant.countDocuments({ eventId });
+
+    return res.status(200).json({
+      success: true,
+      participant: {
+        rank,
+        name: participant.name || 'Attendee',
+        pointsAwarded: points,
+        completedActivitiesCount: (participant.scannedActivities || []).length,
+        scannedActivities: (participant.scannedActivities || []).map((sa) => ({
+          activityTitle: sa.activityTitle || 'Activity Check-In',
+          pointsEarned: sa.pointsEarned || 0,
+          scannedAt: sa.scannedAt,
+        })),
+        totalParticipants,
+      },
+    });
+  } catch (err) {
+    console.error('Error looking up participant rank:', err);
+    return res.status(500).json({ error: 'Failed to lookup rank', details: err.message });
+  }
+};
+
 module.exports = {
   createEvent,
   getAllEvents,
@@ -551,4 +689,6 @@ module.exports = {
   deleteEvent,
   getGlobalStats,
   getGlobalKPIs,
+  getPublicLeaderboard,
+  lookupParticipantRank,
 };

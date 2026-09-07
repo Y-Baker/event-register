@@ -59,6 +59,7 @@ app.use(cors());
 app.use(authMiddleware);
 
 // Routes
+app.use('/api/events', eventRoutes);
 app.use('/api/v1/events', eventRoutes);
 app.use('/api/v1', baseRoutes);
 app.use('/api/v1/admin', adminRoutes);

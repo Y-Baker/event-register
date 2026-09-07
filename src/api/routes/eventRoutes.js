@@ -20,6 +20,8 @@ router.get('/', eventController.getAllEvents);
 router.get('/stats', requireRole('organizer', 'admin', 'scanner', 'officer'), eventController.getGlobalStats);
 router.get('/stats/kpis', requireRole('organizer', 'admin', 'scanner', 'officer'), eventController.getGlobalStats);
 router.get('/:eventId', eventController.getEventById);
+router.get('/:eventId/leaderboard', eventController.getPublicLeaderboard);
+router.get('/:eventId/leaderboard/my-rank', eventController.lookupParticipantRank);
 
 // Organizer / Admin endpoints
 router.post('/', requireRole('organizer', 'admin'), validateCreateEvent, validateRequest, eventController.createEvent);
