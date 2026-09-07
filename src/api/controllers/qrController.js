@@ -443,8 +443,171 @@ const sendQRToParticipants = async (req, res) => {
   }
 };
 
+const prepareEventQRCampaign = async (req, res) => {
+  const { eventId } = req.params;
+  const {
+    participantId,
+    participantIds,
+    sendToAllUnsent = true,
+    scheduledFor = null,
+  } = req.body || {};
+
+  try {
+    if (!mongoose.isValidObjectId(eventId)) {
+      return res.status(400).json({ error: 'Invalid eventId format' });
+    }
+
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    let participants = [];
+    if (participantId) {
+      if (!mongoose.isValidObjectId(participantId)) {
+        return res.status(400).json({ error: 'Invalid participantId format' });
+      }
+      const single = await Participant.findOne({ _id: participantId, eventId });
+      if (!single) {
+        return res.status(404).json({ error: 'Participant not found for this event' });
+      }
+      participants = [single];
+    } else if (Array.isArray(participantIds) && participantIds.length > 0) {
+      participants = await Participant.find({
+        _id: { $in: participantIds.filter((id) => mongoose.isValidObjectId(id)) },
+        eventId,
+      });
+    } else {
+      const query = { eventId };
+      if (sendToAllUnsent) {
+        query.qrSent = { $ne: true };
+      }
+      participants = await Participant.find(query);
+    }
+
+    if (participants.length === 0) {
+      return res.status(200).json({
+        message: 'No eligible participants found for QR ticket dispatch.',
+        total: 0,
+        recipients: [],
+      });
+    }
+
+    const formattedDate = event.startDate
+      ? new Date(event.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : 'TBA';
+
+    const venueText = event.venue || event.location || 'IEEE MSB Campus';
+    const venueMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueText)}`;
+    const startDateObj = event.startDate ? new Date(event.startDate) : new Date();
+    const endDateObj = event.endDate ? new Date(event.endDate) : new Date(startDateObj.getTime() + 3 * 3600 * 1000);
+    const calDates = `${startDateObj.toISOString().replace(/[-:]/g, '').split('.')[0]}Z/${endDateObj.toISOString().replace(/[-:]/g, '').split('.')[0]}Z`;
+    const calendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(event.name || 'IEEE Event')}&dates=${calDates}&details=${encodeURIComponent('Official IEEE Menoufia Student Branch Event')}&location=${encodeURIComponent(venueText)}`;
+
+    const recipients = [];
+    const isScheduled = Boolean(scheduledFor);
+
+    for (const participant of participants) {
+      try {
+        const ticketPayload = JSON.stringify({
+          ticketId: String(participant._id),
+          eventId: String(event._id),
+          name: participant.name,
+          email: participant.email,
+        });
+
+        const qrBuffer = await generateQRCodeBuffer(ticketPayload);
+        const contentBase64 = qrBuffer.toString('base64');
+
+        recipients.push({
+          email: participant.email,
+          name: participant.name || 'Attendee',
+          participantId: String(participant._id),
+          ticketId: String(participant._id),
+          customFields: {
+            name: participant.name || 'Attendee',
+            email: participant.email,
+            ticketId: String(participant._id),
+            eventName: event.name,
+            eventDate: formattedDate,
+            venue: venueText,
+            venueMapUrl,
+            calendarUrl,
+            participantId: String(participant._id),
+          },
+          attachments: [
+            {
+              filename: `ticket-${participant._id}.png`,
+              mimeType: 'image/png',
+              contentBase64,
+            },
+          ],
+        });
+
+        if (isScheduled && participant.status === 'registered') {
+          participant.status = 'ticket_scheduled';
+          await participant.save();
+        }
+      } catch (err) {
+        console.error(`Error preparing QR for participant ${participant._id}:`, err);
+      }
+    }
+
+    return res.status(200).json({
+      message: `Prepared ${recipients.length} ticket recipients for campaign dispatch.`,
+      total: recipients.length,
+      recipients,
+      isScheduled,
+    });
+  } catch (error) {
+    console.error('Error preparing QR campaign:', error);
+    return res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+};
+
+const dispatchCallback = async (req, res) => {
+  const { eventId } = req.params;
+  const { participantIds = [] } = req.body || {};
+
+  try {
+    if (!mongoose.isValidObjectId(eventId)) {
+      return res.status(400).json({ error: 'Invalid eventId format' });
+    }
+
+    if (!Array.isArray(participantIds) || participantIds.length === 0) {
+      return res.status(400).json({ error: 'participantIds must be a non-empty array' });
+    }
+
+    const validIds = participantIds.filter((id) => mongoose.isValidObjectId(id));
+    const updateResult = await Participant.updateMany(
+      {
+        _id: { $in: validIds },
+        eventId,
+      },
+      {
+        $set: {
+          qrSent: true,
+          qrSentAt: new Date(),
+          status: 'ticket_sent',
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      matchedCount: updateResult.matchedCount,
+      modifiedCount: updateResult.modifiedCount,
+    });
+  } catch (error) {
+    console.error('Error handling dispatch callback:', error);
+    return res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+};
+
 module.exports = {
   sendQRToParticipants,
+  prepareEventQRCampaign,
+  dispatchCallback,
   registerActivity,
   selfCheckIn,
 };

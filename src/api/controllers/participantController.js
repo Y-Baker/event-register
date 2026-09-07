@@ -100,7 +100,7 @@ const addParticipant = async (req, res) => {
     if (event.capacity && event.capacity > 0) {
       const currentCount = await Participant.countDocuments({ eventId });
       if (currentCount >= event.capacity) {
-        return res.status(400).json({ error: `Event has reached its maximum capacity of ${event.capacity} attendees.` });
+        return res.status(400).json({ error: `Event has reached its maximum capacity.` });
       }
     }
 
