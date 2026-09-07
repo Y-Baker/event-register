@@ -17,6 +17,8 @@ router.use('/:eventId/qr', qrRoutes);
 
 // Public / Authenticated read
 router.get('/', eventController.getAllEvents);
+router.get('/stats', requireRole('organizer', 'admin', 'scanner', 'officer'), eventController.getGlobalStats);
+router.get('/stats/kpis', requireRole('organizer', 'admin', 'scanner', 'officer'), eventController.getGlobalStats);
 router.get('/:eventId', eventController.getEventById);
 
 // Organizer / Admin endpoints

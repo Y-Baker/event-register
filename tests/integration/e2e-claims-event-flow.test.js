@@ -71,7 +71,8 @@ function installInMemoryModelStubs() {
       _id: id,
       name: this.name,
       description: this.description,
-      date: this.date || new Date().toISOString(),
+      startDate: this.startDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      endDate: this.endDate || null,
       location: this.location,
       participants: [],
     };

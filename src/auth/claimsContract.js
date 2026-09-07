@@ -1,7 +1,17 @@
 const crypto = require('crypto');
 const config = require('../config');
 
-const ALLOWED_ROLES = new Set(['admin', 'organizer', 'scanner']);
+const ALLOWED_ROLES = new Set([
+  'admin',
+  'officer',
+  'lead',
+  'organizer',
+  'event_organizer',
+  'scanner',
+  'event_scanner',
+  'member',
+  'visitor',
+]);
 const ALLOWED_SCOPE_TYPES = new Set(['global', 'event']);
 const MAX_CLAIMS_LIFETIME_SECONDS = config.auth?.maxClaimsLifetimeSeconds || 604800;
 const CLAIMS_CLOCK_SKEW_SECONDS = config.auth?.claimsClockSkewSeconds || 30;
@@ -62,13 +72,19 @@ function normalizeClaims(input) {
   if (exp === null || exp <= 0) {
     throw new Error('Missing or invalid claims exp');
   }
+  const userId = normalizeKey(input?.user_id || input?.userId) || null;
 
-  return {
+  const res = {
     role,
     scope_type: scopeType,
     scope_id: scopeType === 'global' ? null : rawScopeId,
     exp,
   };
+  if (userId) {
+    res.userId = userId;
+    res.user_id = userId;
+  }
+  return res;
 }
 
 function encodeClaims(claimsInput) {
@@ -128,6 +144,7 @@ function parseClaimsPayload(rawPayload) {
     scopeType: normalized.scope_type,
     scopeId: normalized.scope_id,
     exp: normalized.exp,
+    userId: normalized.userId || normalized.user_id || null,
   };
 }
 

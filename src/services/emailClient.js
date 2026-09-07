@@ -7,7 +7,7 @@ const STREAM = config.email.stream;
 const EMAIL_SERVICE_URL = config.email.serviceUrl; // e.g. http://localhost:3060
 const EMAIL_SERVICE_AUTH_TOKEN = config.email.serviceAuthToken;
 
-function buildPayload({ to, subject, text, templateId, templateVersion, templateVars, attachments, priority }) {
+function buildPayload({ to, subject, text, html, templateId, templateVersion, templateVars, attachments, priority }) {
   return {
     schemaVersion: '1.0',
     id: randomUUID(),
@@ -15,6 +15,7 @@ function buildPayload({ to, subject, text, templateId, templateVersion, template
     to: Array.isArray(to) ? to : [to],
     subject,
     text,
+    ...(html ? { html } : {}),
     templateId,
     templateVersion,
     templateVars,

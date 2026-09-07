@@ -75,14 +75,14 @@ function installInMemoryModelStubs() {
       id,
       name: this.name,
       description: this.description,
-      date: this.date || new Date().toISOString(),
+      startDate: this.startDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      endDate: this.endDate || null,
       location: this.location,
       venue: this.venue,
       category: this.category,
       capacity: this.capacity,
       isRegistrationOpen: this.isRegistrationOpen,
       allowedAudience: this.allowedAudience,
-      points: this.points,
       customFields: this.customFields || [],
       scannerUserIds: this.scannerUserIds || [],
       status: this.status || 'published',
@@ -367,7 +367,6 @@ test('Operations Studio & Live Scanner Flow', async (t) => {
         capacity: 50,
         isRegistrationOpen: true,
         allowedAudience: 'public',
-        points: 30,
         customFields: [
           {
             id: 'tshirt_size',
@@ -510,7 +509,7 @@ test('Operations Studio & Live Scanner Flow', async (t) => {
     assert.equal(staffScanRes.status, 200);
     const scanData = await staffScanRes.json();
     assert.equal(scanData.participant.name, 'Ahmed Youssef');
-    assert.equal(scanData.participant.pointsAwarded, 30);
+    assert.equal(scanData.participant.pointsAwarded, 25);
 
     // Duplicate scan on same activity -> returns 409 conflict
     const dupScanRes = await fetch(`${baseUrl}/api/v1/events/${eventId}/qr/scan`, {
@@ -535,7 +534,7 @@ test('Operations Studio & Live Scanner Flow', async (t) => {
     });
     assert.equal(selfCheckinRes.status, 200);
     const selfData = await selfCheckinRes.json();
-    assert.equal(selfData.participant.pointsAwarded, 50); // 30 + 20
+    assert.equal(selfData.participant.pointsAwarded, 45); // 25 + 20
 
     // 8. Test Attendance Report
     const reportRes = await fetch(`${baseUrl}/api/v1/events/${eventId}/attendance/report`, {

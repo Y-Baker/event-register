@@ -48,6 +48,22 @@ const registerActivity = async (req, res) => {
     const event = await Event.findById(eventId);
     if (!event) return res.status(404).json({ error: 'Event not found' });
 
+    // Enforce scanner authorization if specific scanners are assigned
+    const scanningUserId = req.auth?.userId || req.auth?.user_id || body.scannerUserId || null;
+    const isGlobalAdminOrOfficer = req.auth?.role === 'admin' || req.auth?.role === 'officer';
+    const isEventOrganizer = req.auth?.role === 'organizer' && (!event.createdBy || String(event.createdBy) === String(scanningUserId));
+    const hasAssignedScanners = Array.isArray(event.scannerUserIds) && event.scannerUserIds.length > 0;
+
+    if (hasAssignedScanners && !isGlobalAdminOrOfficer) {
+      const isAssigned = event.scannerUserIds.some((id) => String(id) === String(scanningUserId));
+      if (!isAssigned && !isEventOrganizer) {
+        return res.status(403).json({
+          error: 'Access Restricted: You are not an authorized scanner for this event.',
+          isUnauthorizedScanner: true,
+        });
+      }
+    }
+
     const activity = await Activity.findOne({ eventId, qrId: activityQrId, isActive: { $ne: false } });
     if (!activity) return res.status(404).json({ error: 'Activity not found' });
 
@@ -68,6 +84,46 @@ const registerActivity = async (req, res) => {
 
     if (participant.eventId.toString() !== eventId) {
       return res.status(403).json({ error: 'Participant does not belong to this event' });
+    }
+
+    // Check if activity is restricted by whitelist
+    const { allowOverride = false } = body;
+    if (activity.isRestricted) {
+      const partIdStr = String(participant._id);
+      const partEmail = (participant.email || '').trim().toLowerCase();
+      const inAllowedIds = Array.isArray(activity.allowedParticipantIds) &&
+        activity.allowedParticipantIds.some((id) => String(id) === partIdStr);
+      const inAllowedEmails = Array.isArray(activity.allowedEmails) &&
+        activity.allowedEmails.some((e) => e.trim().toLowerCase() === partEmail);
+      const isWhitelisted = inAllowedIds || inAllowedEmails;
+
+      if (!isWhitelisted) {
+        if (allowOverride) {
+          // Strictly enforce that only Organizers, Officers, or Admins can override
+          const hasOrganizerAccess = isGlobalAdminOrOfficer || isEventOrganizer;
+          if (!hasOrganizerAccess) {
+            return res.status(403).json({
+              error: 'Scanner staff cannot override whitelist restrictions. Contact an event organizer or officer.',
+              isRestricted: true,
+              unauthorizedOverride: true,
+            });
+          }
+        } else {
+          return res.status(403).json({
+            error: `Attendee "${participant.name}" is not on the whitelist for "${activity.name}".`,
+            isRestricted: true,
+            participant: {
+              id: String(participant._id),
+              name: participant.name,
+              email: participant.email,
+            },
+            activity: {
+              id: String(activity._id),
+              name: activity.name,
+            },
+          });
+        }
+      }
     }
 
     // Atomic update or in-memory fallback
@@ -177,6 +233,22 @@ const selfCheckIn = async (req, res) => {
       });
     }
 
+    if (activity.isRestricted) {
+      const partIdStr = String(participant._id);
+      const partEmail = normalizedEmail;
+      const inAllowedIds = Array.isArray(activity.allowedParticipantIds) &&
+        activity.allowedParticipantIds.some((id) => String(id) === partIdStr);
+      const inAllowedEmails = Array.isArray(activity.allowedEmails) &&
+        activity.allowedEmails.some((e) => e.trim().toLowerCase() === partEmail);
+
+      if (!inAllowedIds && !inAllowedEmails) {
+        return res.status(403).json({
+          error: `Access Denied: You are not on the authorized whitelist for "${activity.name}". Please contact the organizers.`,
+          isRestricted: true,
+        });
+      }
+    }
+
     const alreadyScanned = (participant.scannedActivities || []).some(
       (s) => String(s.activityId) === String(activity._id)
     );
@@ -232,6 +304,9 @@ const sendQRToParticipants = async (req, res) => {
     participantId,
     emailSubject,
     emailBody,
+    subject,
+    bodyTemplate: bodyParam,
+    body: directBody,
     sendToAllUnsent = true,
   } = req.body || {};
 
@@ -281,12 +356,19 @@ const sendQRToParticipants = async (req, res) => {
     const defaultSubject = `Your Ticket Pass & QR Code for ${event.name}`;
     const defaultBody = `Hello {{name}},\n\nYour registration for {{eventName}} has been confirmed!\n\nEvent Date: {{eventDate}}\nVenue: {{venue}}\n\nYour digital ticket ID is {{ticketId}}. Please present the attached QR code at the check-in desk.\n\nBest regards,\nIEEE Menoufia Student Branch`;
 
-    const subjectTemplate = emailSubject || defaultSubject;
-    const bodyTemplate = emailBody || defaultBody;
+    const subjectTemplate = emailSubject || subject || defaultSubject;
+    const bodyTemplate = emailBody || bodyParam || directBody || defaultBody;
 
     const formattedDate = event.startDate
       ? new Date(event.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-      : (event.date ? new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBA');
+      : 'TBA';
+
+    const venueText = event.venue || event.location || 'IEEE MSB Campus';
+    const venueMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueText)}`;
+    const startDateObj = event.startDate ? new Date(event.startDate) : new Date();
+    const endDateObj = event.endDate ? new Date(event.endDate) : new Date(startDateObj.getTime() + 3 * 3600 * 1000);
+    const calDates = `${startDateObj.toISOString().replace(/[-:]/g, '').split('.')[0]}Z/${endDateObj.toISOString().replace(/[-:]/g, '').split('.')[0]}Z`;
+    const calendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(event.name || 'IEEE Event')}&dates=${calDates}&details=${encodeURIComponent('Official IEEE Menoufia Student Branch Event')}&location=${encodeURIComponent(venueText)}`;
 
     for (const participant of participants) {
       try {
@@ -302,22 +384,31 @@ const sendQRToParticipants = async (req, res) => {
 
         const personalizedSubject = subjectTemplate
           .replace(/{{name}}/g, participant.name || 'Attendee')
+          .replace(/{{email}}/g, participant.email || '')
           .replace(/{{eventName}}/g, event.name)
           .replace(/{{eventDate}}/g, formattedDate)
-          .replace(/{{venue}}/g, event.venue || event.location || 'IEEE MSB Campus')
+          .replace(/{{venue}}/g, venueText)
+          .replace(/{{venueMapUrl}}/g, venueMapUrl)
+          .replace(/{{calendarUrl}}/g, calendarUrl)
           .replace(/{{ticketId}}/g, String(participant._id));
 
         const personalizedBody = bodyTemplate
           .replace(/{{name}}/g, participant.name || 'Attendee')
+          .replace(/{{email}}/g, participant.email || '')
           .replace(/{{eventName}}/g, event.name)
           .replace(/{{eventDate}}/g, formattedDate)
-          .replace(/{{venue}}/g, event.venue || event.location || 'IEEE MSB Campus')
+          .replace(/{{venue}}/g, venueText)
+          .replace(/{{venueMapUrl}}/g, venueMapUrl)
+          .replace(/{{calendarUrl}}/g, calendarUrl)
           .replace(/{{ticketId}}/g, String(participant._id));
+
+        const isHtml = /<[a-z][\s\S]*>/i.test(personalizedBody);
 
         await sendEmailEvent({
           to: participant.email,
           subject: personalizedSubject,
           text: personalizedBody,
+          ...(isHtml ? { html: personalizedBody } : {}),
           attachments: [
             {
               filename: `ticket-${participant._id}.png`,

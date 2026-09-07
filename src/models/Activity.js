@@ -47,6 +47,19 @@ const activitySchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  isRestricted: {
+    type: Boolean,
+    default: false,
+  },
+  allowedParticipantIds: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Participant',
+  }],
+  allowedEmails: [{
+    type: String,
+    trim: true,
+    lowercase: true,
+  }],
   order: {
     type: Number,
     default: 0,

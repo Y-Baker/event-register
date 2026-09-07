@@ -9,9 +9,13 @@ const validateCreateEvent = [
     .trim()
     .notEmpty().withMessage('Description is required'),
 
-  body('date')
+  body('startDate')
     .optional({ nullable: true })
-    .isISO8601().toDate().withMessage('Invalid date format if provided'),
+    .isISO8601().toDate().withMessage('Invalid start date format if provided'),
+
+  body('endDate')
+    .optional({ nullable: true })
+    .isISO8601().toDate().withMessage('Invalid end date format if provided'),
 
   body('location')
     .trim()

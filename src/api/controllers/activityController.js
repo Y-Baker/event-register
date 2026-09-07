@@ -8,7 +8,18 @@ const Event = require('../../models/Event');
 const createActivity = async (req, res) => {
   try {
     const { eventId } = req.params;
-    const { name, type, points, isLocked, checkInMode, description, order } = req.body || {};
+    const {
+      name,
+      type,
+      points,
+      isLocked,
+      checkInMode,
+      description,
+      order,
+      isRestricted,
+      allowedParticipantIds,
+      allowedEmails,
+    } = req.body || {};
 
     if (!mongoose.isValidObjectId(eventId)) {
       return res.status(400).json({ error: 'Invalid eventId format' });
@@ -35,6 +46,9 @@ const createActivity = async (req, res) => {
       qrId,
       description: description ? description.trim() : '',
       order: order !== undefined ? Number(order) : 0,
+      isRestricted: Boolean(isRestricted),
+      allowedParticipantIds: Array.isArray(allowedParticipantIds) ? allowedParticipantIds : [],
+      allowedEmails: Array.isArray(allowedEmails) ? allowedEmails.map((e) => String(e).trim().toLowerCase()) : [],
       isActive: true,
     });
 
@@ -91,7 +105,7 @@ const getActivityByQrId = async (req, res) => {
       return res.status(400).json({ error: 'qrId is required' });
     }
 
-    const activity = await Activity.findOne({ qrId, isActive: { $ne: false } }).populate('eventId', 'name description date startDate endDate location bannerUrl coverImageUrl status isRegistrationOpen');
+    const activity = await Activity.findOne({ qrId, isActive: { $ne: false } }).populate('eventId', 'name description startDate endDate location bannerUrl coverImageUrl status isRegistrationOpen');
     if (!activity) {
       return res.status(404).json({ error: 'Activity not found' });
     }
@@ -106,6 +120,7 @@ const getActivityByQrId = async (req, res) => {
         checkInMode: activity.checkInMode,
         qrId: activity.qrId,
         description: activity.description,
+        isRestricted: activity.isRestricted,
         event: activity.eventId,
       },
     });
@@ -131,6 +146,13 @@ const updateActivity = async (req, res) => {
     if (body.description !== undefined) updates.description = body.description.trim();
     if (body.order !== undefined) updates.order = Number(body.order);
     if (body.isLocked !== undefined) updates.isLocked = Boolean(body.isLocked);
+    if (body.isRestricted !== undefined) updates.isRestricted = Boolean(body.isRestricted);
+    if (body.allowedParticipantIds !== undefined) {
+      updates.allowedParticipantIds = Array.isArray(body.allowedParticipantIds) ? body.allowedParticipantIds : [];
+    }
+    if (body.allowedEmails !== undefined) {
+      updates.allowedEmails = Array.isArray(body.allowedEmails) ? body.allowedEmails.map((e) => String(e).trim().toLowerCase()) : [];
+    }
     if (body.checkInMode !== undefined) {
       updates.checkInMode = body.checkInMode === 'self_service' ? 'self_service' : 'staff_scanner';
     }
@@ -144,6 +166,60 @@ const updateActivity = async (req, res) => {
   } catch (err) {
     console.error('Error updating activity:', err);
     return res.status(500).json({ error: 'Failed to update activity' });
+  }
+};
+
+const updateActivityWhitelist = async (req, res) => {
+  const { activityId } = req.params;
+  try {
+    if (!mongoose.isValidObjectId(activityId)) {
+      return res.status(400).json({ error: 'Invalid activityId format' });
+    }
+
+    const activity = await Activity.findById(activityId);
+    if (!activity) {
+      return res.status(404).json({ error: 'Activity not found' });
+    }
+
+    const { isRestricted, participantIds, emails, append = false } = req.body || {};
+    const updates = {};
+
+    if (isRestricted !== undefined) {
+      updates.isRestricted = Boolean(isRestricted);
+    }
+
+    if (Array.isArray(participantIds)) {
+      const validIds = participantIds.filter((id) => mongoose.isValidObjectId(id));
+      if (append) {
+        const existingSet = new Set((activity.allowedParticipantIds || []).map(String));
+        validIds.forEach((id) => existingSet.add(String(id)));
+        updates.allowedParticipantIds = Array.from(existingSet);
+      } else {
+        updates.allowedParticipantIds = validIds;
+      }
+    }
+
+    if (Array.isArray(emails)) {
+      const cleanedEmails = emails.map((e) => String(e).trim().toLowerCase()).filter(Boolean);
+      if (append) {
+        const existingSet = new Set((activity.allowedEmails || []).map((e) => e.toLowerCase()));
+        cleanedEmails.forEach((e) => existingSet.add(e));
+        updates.allowedEmails = Array.from(existingSet);
+      } else {
+        updates.allowedEmails = cleanedEmails;
+      }
+    }
+
+    const updated = await Activity.findByIdAndUpdate(activityId, { $set: updates }, { new: true });
+
+    return res.status(200).json({
+      message: 'Activity whitelist updated successfully',
+      activity: updated,
+      totalWhitelistedCount: (updated.allowedParticipantIds?.length || 0) + (updated.allowedEmails?.length || 0),
+    });
+  } catch (err) {
+    console.error('Error updating activity whitelist:', err);
+    return res.status(500).json({ error: 'Failed to update whitelist', details: err.message });
   }
 };
 
@@ -236,6 +312,7 @@ module.exports = {
   getActivityById,
   getActivityByQrId,
   updateActivity,
+  updateActivityWhitelist,
   toggleActivityLock,
   setActivityMode,
   deleteActivity,

@@ -6,7 +6,9 @@ const parseCSV = async (filePath) =>
     const results = [];
 
     fs.createReadStream(filePath)
-      .pipe(csv())
+      .pipe(csv({
+        mapHeaders: ({ header }) => (header || '').trim().replace(/^\ufeff/, '')
+      }))
       .on("data", (row) => results.push(row))
       .on("end", () => resolve(results))
       .on("error", (err) => reject(err));

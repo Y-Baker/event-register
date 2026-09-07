@@ -103,7 +103,6 @@ function buildAttendancePayload(event, activities, participants) {
       id: String(event._id),
       name: event.name || '',
       capacity: event.capacity,
-      points: event.points,
       customFields: event.customFields || [],
     },
     summary: {
@@ -207,7 +206,7 @@ const awardActivityPoints = async (req, res) => {
     }
 
     const participants = await Participant.find(query);
-    const basePoints = pointsOverride !== undefined && pointsOverride !== null ? Number(pointsOverride) : (event.points || 25);
+    const basePoints = pointsOverride !== undefined && pointsOverride !== null ? Number(pointsOverride) : 25;
 
     let updatedCount = 0;
     let totalPointsAwarded = 0;

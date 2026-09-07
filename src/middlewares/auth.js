@@ -1,5 +1,7 @@
+const mongoose = require('mongoose');
 const config = require('../config');
 const { verifySignedClaims } = require('../auth/claimsContract');
+const Event = require('../models/Event');
 
 function normalizeHeaderValue(value) {
   if (Array.isArray(value)) return value[0];
@@ -45,6 +47,7 @@ const authMiddleware = async (req, res, next) => {
         `[auth] verified claims for ${req.method} ${req.originalUrl} role=${claims.role} scopeType=${claims.scopeType} scopeId=${claims.scopeId ?? 'null'} exp=${claims.exp}`
       );
       req.auth = {
+        userId: claims.userId || claims.user_id || null,
         role: claims.role,
         scopeType: claims.scopeType,
         scopeId: claims.scopeId,
@@ -73,7 +76,7 @@ const authMiddleware = async (req, res, next) => {
 }
 
 const requireRole = (...allowedRoles) => {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.auth || req.auth.authReady === false) {
       return res.status(503).json({ error: 'Authorization subsystem unavailable' });
     }
@@ -101,6 +104,31 @@ const requireRole = (...allowedRoles) => {
       effectiveAllowed.add('event_scanner');
       effectiveAllowed.add('lead');
       effectiveAllowed.add('officer');
+    }
+
+    // If endpoint allows scanner, check if member is assigned scanner on this event
+    if (role === 'member' && (allowedRoles.includes('scanner') || allowedRoles.includes('event_scanner'))) {
+      const eventId = normalizeKey(req.params?.eventId);
+      if (eventId && mongoose.isValidObjectId(eventId)) {
+        try {
+          const event = await Event.findById(eventId).select('scannerUserIds createdBy').lean();
+          if (event) {
+            const userId = req.auth.userId;
+            const isAssigned =
+              userId &&
+              Array.isArray(event.scannerUserIds) &&
+              event.scannerUserIds.some((id) => String(id) === String(userId));
+            const isCreator = userId && event.createdBy && String(event.createdBy) === String(userId);
+            if (isAssigned || isCreator) {
+              req.auth.isAssignedScanner = true;
+              return next();
+            }
+          }
+        } catch {
+          // If DB query fails, fall through to forbidden
+        }
+      }
+      return res.status(403).json({ error: 'Forbidden: You are not an authorized scanner for this event' });
     }
 
     if (!effectiveAllowed.has(role)) {

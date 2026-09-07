@@ -26,10 +26,6 @@ const eventSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  date: {
-    type: Date,
-    default: Date.now,
-  },
   startDate: {
     type: Date,
     default: null,
@@ -65,7 +61,7 @@ const eventSchema = new mongoose.Schema({
   },
   capacity: {
     type: Number,
-    default: null,
+    default: -1, // -1 represents unlimited capacity
   },
   isRegistrationOpen: {
     type: Boolean,
@@ -79,23 +75,21 @@ const eventSchema = new mongoose.Schema({
   allowedCommitteeIds: [{
     type: String,
   }],
-  points: {
-    type: Number,
-    default: 25,
-  },
   customFields: [customFieldSchema],
   scannerUserIds: [{
     type: String,
   }],
   status: {
     type: String,
-    enum: ['draft', 'published', 'completed', 'cancelled'],
-    default: 'published',
+    enum: ['active', 'past', 'archived', 'draft', 'published', 'completed', 'cancelled'],
+    default: 'active',
   },
   participants: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Participant',
   }],
 }, { timestamps: true });
+
+eventSchema.index({ status: 1, isRegistrationOpen: 1, startDate: 1 });
 
 module.exports = mongoose.model('Event', eventSchema);

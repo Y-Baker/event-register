@@ -67,9 +67,27 @@ const addParticipant = async (req, res) => {
       return res.status(404).json({ error: 'Event not found' });
     }
 
-    // 1. Check if registration is open
+    // 1. Check if registration is open (flag + calendar day cutoff)
     if (event.isRegistrationOpen === false) {
       return res.status(400).json({ error: 'Registration for this event is currently closed.' });
+    }
+
+    const targetCutoffDate = event.endDate || event.startDate;
+    if (targetCutoffDate) {
+      const targetDate = new Date(targetCutoffDate);
+      if (!isNaN(targetDate.getTime())) {
+        // Midnight (00:00:00.000) on the day before the event cutoff date
+        const cutoffDate = new Date(targetDate);
+        cutoffDate.setDate(cutoffDate.getDate() - 1);
+        cutoffDate.setHours(0, 0, 0, 0);
+
+        if (Date.now() >= cutoffDate.getTime()) {
+          return res.status(400).json({
+            error: 'Registration for this event closed on the day prior to the event date.',
+            cutoffReached: true,
+          });
+        }
+      }
     }
 
     // 2. Check audience eligibility
@@ -78,7 +96,7 @@ const addParticipant = async (req, res) => {
       return res.status(403).json({ error: eligibility.reason });
     }
 
-    // 3. Check capacity
+    // 3. Check capacity (if -1 or null/0, capacity is unlimited)
     if (event.capacity && event.capacity > 0) {
       const currentCount = await Participant.countDocuments({ eventId });
       if (currentCount >= event.capacity) {
@@ -153,6 +171,21 @@ const checkInParticipantManual = async (req, res) => {
     const event = await Event.findById(eventId);
     if (!event) return res.status(404).json({ error: 'Event not found' });
 
+    // Enforce scanner authorization if specific scanners are assigned
+    const scanningUserId = req.auth?.userId || req.auth?.user_id || req.body?.scannerUserId || null;
+    const isGlobalAdminOrOfficer = req.auth?.role === 'admin' || req.auth?.role === 'officer';
+    const isEventOrganizer = req.auth?.role === 'organizer' && (!event.createdBy || String(event.createdBy) === String(scanningUserId));
+    const hasAssignedScanners = Array.isArray(event.scannerUserIds) && event.scannerUserIds.length > 0;
+
+    if (hasAssignedScanners && !isGlobalAdminOrOfficer) {
+      const isAssigned = event.scannerUserIds.some((id) => String(id) === String(scanningUserId));
+      if (!isAssigned && !isEventOrganizer) {
+        return res.status(403).json({
+          error: 'Forbidden: You are not an assigned scanner for this event.',
+        });
+      }
+    }
+
     const participant = await Participant.findOne({ _id: participantId, eventId });
     if (!participant) return res.status(404).json({ error: 'Participant not found for this event' });
 
@@ -171,6 +204,23 @@ const checkInParticipantManual = async (req, res) => {
 
     if (targetActivity.isLocked) {
       return res.status(400).json({ error: `Activity "${targetActivity.name}" is locked / closed.` });
+    }
+
+    const { allowOverride = false } = req.body || {};
+    if (targetActivity.isRestricted && !allowOverride) {
+      const partIdStr = String(participant._id);
+      const partEmail = (participant.email || '').trim().toLowerCase();
+      const inAllowedIds = Array.isArray(targetActivity.allowedParticipantIds) &&
+        targetActivity.allowedParticipantIds.some((id) => String(id) === partIdStr);
+      const inAllowedEmails = Array.isArray(targetActivity.allowedEmails) &&
+        targetActivity.allowedEmails.some((e) => e.trim().toLowerCase() === partEmail);
+
+      if (!inAllowedIds && !inAllowedEmails) {
+        return res.status(403).json({
+          error: `Participant "${participant.name}" is not on the whitelist for "${targetActivity.name}".`,
+          isRestricted: true,
+        });
+      }
     }
 
     const alreadyScanned = (participant.scannedActivities || []).some(
@@ -291,6 +341,7 @@ const deleteParticipant = async (req, res) => {
 
 const uploadCSV = async (req, res) => {
   const { eventId } = req.params;
+  const mode = req.body?.mode === 'replace' ? 'replace' : 'append';
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded. Ensure field name is "file" and the file is a CSV.' });
   }
@@ -300,17 +351,37 @@ const uploadCSV = async (req, res) => {
     const rawRows = await csv.parseCSV(filePath);
     try { fs.unlinkSync(filePath); } catch {}
 
+    if (mode === 'replace') {
+      await Participant.deleteMany({ eventId });
+    }
+
     const errors = [];
     let successful = 0;
+    let updated = 0;
+
+    const getField = (row, ...keys) => {
+      const rowEntries = Object.entries(row);
+      for (const key of keys) {
+        const direct = row[key];
+        if (direct !== undefined && direct !== null && String(direct).trim() !== '') {
+          return String(direct).trim();
+        }
+        const found = rowEntries.find(([k]) => k.trim().toLowerCase() === key.toLowerCase());
+        if (found && found[1] !== undefined && found[1] !== null && String(found[1]).trim() !== '') {
+          return String(found[1]).trim();
+        }
+      }
+      return '';
+    };
 
     for (const item of rawRows) {
       const normalized = {
-        name: (item.name || item.Name || '').trim(),
-        email: (item.email || item.Email || '').trim().toLowerCase(),
-        phoneNumber: (item.phoneNumber || item.Number || item.Phone || '').toString().trim(),
-        university: (item.university || item.University || '').trim(),
-        faculty: (item.faculty || item.Faculty || '').trim(),
-        major: (item.major || item.Major || '').trim(),
+        name: getField(item, 'name', 'Name', 'Full Name', 'Full_Name', 'fullName', 'Participant Name', 'Student Name', 'Attendee Name'),
+        email: getField(item, 'email', 'Email', 'Email Address', 'E-mail', 'Mail', 'Student Email', 'Academic Email').toLowerCase(),
+        phoneNumber: getField(item, 'phoneNumber', 'Number', 'Phone', 'Phone Number', 'Phone_Number', 'phone', 'mobile', 'Mobile', 'WhatsApp', 'Contact'),
+        university: getField(item, 'university', 'University', 'College', 'college', 'School', 'school', 'Institution'),
+        faculty: getField(item, 'faculty', 'Faculty', 'Department', 'department', 'Dept'),
+        major: getField(item, 'major', 'Major', 'Specialization', 'Branch'),
       };
 
       try {
@@ -321,8 +392,19 @@ const uploadCSV = async (req, res) => {
 
         const exists = await Participant.findOne({ email: normalized.email, eventId });
         if (exists) {
-          errors.push({ participant: normalized, error: 'Email already registered for this event' });
-          continue;
+          if (mode === 'append') {
+            exists.name = normalized.name || exists.name;
+            if (normalized.phoneNumber) exists.phoneNumber = normalized.phoneNumber;
+            if (normalized.university) exists.university = normalized.university;
+            if (normalized.faculty) exists.faculty = normalized.faculty;
+            if (normalized.major) exists.major = normalized.major;
+            await exists.save();
+            updated++;
+            continue;
+          } else {
+            errors.push({ participant: normalized, error: 'Duplicate email in sheet' });
+            continue;
+          }
         }
 
         await Participant.create({ ...normalized, eventId, status: 'registered' });
@@ -332,10 +414,14 @@ const uploadCSV = async (req, res) => {
       }
     }
 
+    const totalProcessed = successful + updated;
     return res.json({
-      message: 'Upload complete',
+      message: `Upload complete in ${mode} mode: ${totalProcessed} processed (${successful} new, ${updated} updated)`,
+      mode,
       total: rawRows.length,
       successful,
+      updated,
+      processed: totalProcessed,
       errors: errors.length,
       errorDetails: errors,
     });
@@ -345,9 +431,35 @@ const uploadCSV = async (req, res) => {
   }
 };
 
+const resetParticipantCheckIn = async (req, res) => {
+  const { eventId, participantId } = req.params;
+  try {
+    if (!mongoose.isValidObjectId(eventId) || !mongoose.isValidObjectId(participantId)) {
+      return res.status(400).json({ error: 'Invalid eventId or participantId format' });
+    }
+    const participant = await Participant.findOne({ _id: participantId, eventId });
+    if (!participant) {
+      return res.status(404).json({ error: 'Participant not found for this event' });
+    }
+    participant.status = 'registered';
+    participant.scannedActivities = [];
+    participant.pointsAwarded = 0;
+    await participant.save();
+
+    return res.status(200).json({
+      message: `Check-in status reset for ${participant.name}`,
+      participant,
+    });
+  } catch (err) {
+    console.error('Error resetting check-in:', err);
+    return res.status(500).json({ error: 'Failed to reset check-in', details: err.message });
+  }
+};
+
 module.exports = {
   addParticipant,
   checkInParticipantManual,
+  resetParticipantCheckIn,
   getEventParticipants,
   getParticipantById,
   deleteParticipant,
