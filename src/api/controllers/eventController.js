@@ -5,6 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 const Event = require('../../models/Event');
 const Activity = require('../../models/Activity');
 const Participant = require('../../models/Participant');
+const fileClient = require('../../services/fileClient');
 
 const createEvent = async (req, res) => {
   try {
@@ -332,9 +333,35 @@ const updateEvent = async (req, res) => {
     if (body.scannerUserIds !== undefined) updates.scannerUserIds = Array.isArray(body.scannerUserIds) ? body.scannerUserIds : [];
     if (body.status !== undefined) updates.status = body.status;
 
+    // If coverImageUrl or bannerUrl are being updated, look up existing values first
+    let existingEvent = null;
+    if (body.coverImageUrl !== undefined || body.bannerUrl !== undefined) {
+      existingEvent = await Event.findById(eventId).select('coverImageUrl bannerUrl');
+    }
+
     const event = await Event.findByIdAndUpdate(eventId, { $set: updates }, { new: true });
     if (!event) {
       return res.status(404).json({ error: 'Event not found' });
+    }
+
+    // Clean up replaced images in file-service / Cloudinary
+    if (existingEvent) {
+      const urlsToDelete = new Set();
+      if (body.coverImageUrl !== undefined && existingEvent.coverImageUrl && existingEvent.coverImageUrl !== event.coverImageUrl) {
+        if (existingEvent.coverImageUrl !== event.bannerUrl) {
+          urlsToDelete.add(existingEvent.coverImageUrl);
+        }
+      }
+      if (body.bannerUrl !== undefined && existingEvent.bannerUrl && existingEvent.bannerUrl !== event.bannerUrl) {
+        if (existingEvent.bannerUrl !== event.coverImageUrl) {
+          urlsToDelete.add(existingEvent.bannerUrl);
+        }
+      }
+      for (const url of urlsToDelete) {
+        fileClient.deleteFileByUrl(url).catch((err) => {
+          console.warn(`[EventController] Error deleting superseded event file ${url}:`, err.message);
+        });
+      }
     }
 
     return res.status(200).json({ message: 'Event updated successfully', event });
@@ -466,6 +493,17 @@ const deleteEvent = async (req, res) => {
       Activity.deleteMany({ eventId }),
       Participant.deleteMany({ eventId }),
     ]);
+
+    // Clean up event files in file-service / Cloudinary
+    const fileUrlsToDelete = new Set();
+    if (event.coverImageUrl) fileUrlsToDelete.add(event.coverImageUrl);
+    if (event.bannerUrl) fileUrlsToDelete.add(event.bannerUrl);
+
+    for (const url of fileUrlsToDelete) {
+      fileClient.deleteFileByUrl(url).catch((err) => {
+        console.warn(`[EventController] Error deleting event file ${url}:`, err.message);
+      });
+    }
 
     return res.status(200).json({ message: 'Event and associated records deleted successfully' });
   } catch (err) {

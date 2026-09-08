@@ -40,6 +40,9 @@ const config = {
 	apiKeys: {
 		organizerId: process.env.ORGANIZER_ID,
 		scannerId: process.env.SCANNER_ID
+	},
+	fileService: {
+		serviceUrl: process.env.FILE_SERVICE_URL || 'http://localhost:5080'
 	}
 };
 
