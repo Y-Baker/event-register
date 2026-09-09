@@ -59,7 +59,6 @@ const authMiddleware = async (req, res, next) => {
     }
 
     req.auth = { role: 'anonymous', authReady: true };
-    console.log(`[auth] no claims headers for ${req.method} ${req.originalUrl}; continuing as anonymous`);
     return next();
   } catch (err) {
     console.warn(

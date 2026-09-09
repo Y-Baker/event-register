@@ -77,11 +77,12 @@ const bootstrapDefaultRoleKeys = async () => {
   try {
     ensureConnected();
 
-    const organizerKeyName = config.apiKeys.organizerId;
-    const scannerKeyName = config.apiKeys.scannerId;
+    const organizerKeyName = config.apiKeys?.organizerId;
+    const scannerKeyName = config.apiKeys?.scannerId;
 
     if (!organizerKeyName || !scannerKeyName) {
-      throw new Error('Missing ORGANIZER_ID or SCANNER_ID');
+      logger.info('ℹ️ Legacy role keys (ORGANIZER_ID / SCANNER_ID) not provided; skipping bootstrap (auth handled via JWT claims)');
+      return null;
     }
 
     const organizerExisting = await getKey(organizerKeyName);
