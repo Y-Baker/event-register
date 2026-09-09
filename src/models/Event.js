@@ -7,7 +7,7 @@ const customFieldSchema = new mongoose.Schema({
   label: { type: String, required: true },
   type: {
     type: String,
-    enum: ['text', 'select', 'textarea', 'number', 'checkbox'],
+    enum: ['text', 'select', 'textarea', 'number', 'checkbox', 'national_id'],
     default: 'text',
   },
   options: [{ type: String }],
